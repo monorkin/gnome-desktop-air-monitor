@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/monorkin/awair-gnome-client/internal/app"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/app"
 )
 
 func main() {

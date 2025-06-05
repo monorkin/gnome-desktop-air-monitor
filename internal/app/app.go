@@ -6,7 +6,12 @@ import (
 	adw "github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	gio "github.com/diamondburned/gotk4/pkg/gio/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
-	api "github.com/monorkin/awair-gnome-client/awair/api"
+	api "github.com/monorkin/gnome-desktop-air-monitor/awair/api"
+	database "github.com/monorkin/gnome-desktop-air-monitor/internal/database"
+)
+
+const (
+	APP_IDENTIFIER = "io.stanko.gnome-desktop-air-monitor"
 )
 
 type App struct {
@@ -16,8 +21,10 @@ type App struct {
 }
 
 func NewApp() *App {
+	database.Init()
+
 	application := gtk.NewApplication(
-		"io.stanko.awair-gnome-client",
+		APP_IDENTIFIER,
 		gio.ApplicationFlagsNone,
 	)
 
