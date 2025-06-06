@@ -1,1 +1,1 @@
-# Gnome Awair Client
+# GNOME Desktop Air Monitor

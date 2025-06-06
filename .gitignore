@@ -8,6 +8,8 @@ bin/
 
 # Test binary, built with `go test -c`
 *.test
+coverage.out
+coverage.html
 
 # Output of the go coverage tool
 *.out
