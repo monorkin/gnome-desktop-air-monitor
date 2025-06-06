@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/diamondburned/gotk4-adwaita/pkg v0.0.0-20250223021911-503726bcfce6
 	github.com/diamondburned/gotk4/pkg v0.3.1
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/grandcat/zeroconf v1.0.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.26.0

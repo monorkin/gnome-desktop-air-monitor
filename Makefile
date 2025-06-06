@@ -4,6 +4,14 @@ MAIN_PATH=./cmd/gnome-desktop-air-monitor
 BUILD_DIR=./bin
 PKG=github.com/monorkin/gnome-desktop-air-monitor
 
+# Extension variables
+EXTENSION_UUID=$(shell if command -v jq >/dev/null 2>&1; then \
+	jq -r '.uuid' shell_extension/metadata.json; \
+else \
+	grep -o '"uuid"[[:space:]]*:[[:space:]]*"[^"]*"' shell_extension/metadata.json | cut -d'"' -f4; \
+fi)
+EXTENSION_DIR=~/.local/share/gnome-shell/extensions/$(EXTENSION_UUID)
+
 # Build information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
@@ -18,12 +26,36 @@ BUILD_FLAGS=-trimpath
 
 # Targets
 .PHONY: help build build-debug run clean test test-verbose test-race test-coverage \
-        fmt vet lint deps tidy check install install-tools dev all debug-info
+        fmt vet lint deps tidy check install uninstall dev all debug-info \
+        install-extension uninstall-extension reload-extension restart-gnome-shell
 
 ## install: Installs the app
 install: build
 	@echo "Installing $(BINARY_NAME)..."
 	cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
+	@$(MAKE) install-extension
+
+## uninstall: Uninstall the app
+uninstall: uninstall-extension
+	@echo "Uninstalling $(BINARY_NAME)..."
+	rm -f /usr/local/bin/$(BINARY_NAME)
+
+## install-extension: Install GNOME shell extension
+install-extension:
+	@echo "Installing GNOME shell extension ($(EXTENSION_UUID))..."
+	@mkdir -p $(EXTENSION_DIR)
+	@cp -r shell_extension/* $(EXTENSION_DIR)/
+
+## uninstall-extension: Uninstall GNOME shell extension
+uninstall-extension:
+	@echo "Uninstalling GNOME shell extension ($(EXTENSION_UUID))..."
+	gnome-extensions disable $(EXTENSION_UUID) 2>/dev/null || true
+	@rm -rf $(EXTENSION_DIR)
+	@echo "Extension uninstalled."
+
+## shell-extension-dev: Start a GNOME shell session for extension development
+shell-extension-dev:
+	dbus-run-session -- gnome-shell --nested --wayland
 
 ## build: Build the application for production
 build: deps
@@ -39,6 +71,7 @@ build-debug: deps
 
 ## dev: Build and run the application
 dev: build-debug
+	@$(MAKE) install-extension
 	@echo "Running $(BINARY_NAME)..."
 	$(BUILD_DIR)/$(BINARY_NAME)-debug
 
@@ -82,6 +115,8 @@ debug-info:
 	@echo "Git Commit: $(GIT_COMMIT)"
 	@echo "Go Version: $(shell go version)"
 	@echo "Build Dir: $(BUILD_DIR)"
+	@echo "Extension UUID: $(EXTENSION_UUID)"
+	@echo "Extension Dir: $(EXTENSION_DIR)"
 
 ## help: Show this help message
 help:

@@ -24,6 +24,7 @@ type App struct {
 	backButton     *gtk.Button
 	settingsButton *gtk.Button
 	devices        []DeviceWithMeasurement
+	dbusService    *DBusService
 }
 
 type DeviceWithMeasurement struct {
@@ -45,6 +46,9 @@ func NewApp() *App {
 	}
 
 	app.ConnectActivate(app.onActivate)
+	
+	// Hold the application so it doesn't quit when the window is closed
+	app.Hold()
 
 	return app
 }
@@ -52,9 +56,26 @@ func NewApp() *App {
 func (app *App) onActivate() {
 	app.generateMockData()
 
+	// Initialize DBUS service
+	var err error
+	app.dbusService, err = NewDBusService(app)
+	if err != nil {
+		fmt.Printf("Failed to initialize DBUS service: %v\n", err)
+	} else {
+		fmt.Println("DBUS service started")
+		// Start periodic updates
+		app.dbusService.StartPeriodicUpdates()
+	}
+
 	app.mainWindow = adw.NewApplicationWindow(app.Application)
 	app.mainWindow.SetDefaultSize(800, 600)
 	app.mainWindow.SetTitle("Air Monitor")
+
+	// Make window hide instead of quit when closed
+	app.mainWindow.ConnectCloseRequest(func() bool {
+		app.mainWindow.SetVisible(false)
+		return true // Prevent default close behavior
+	})
 
 	mainBox := gtk.NewBox(gtk.OrientationVertical, 0)
 
@@ -90,4 +111,15 @@ func (app *App) onActivate() {
 
 func (app *App) Run() int {
 	return app.Application.Run(nil)
+}
+
+func (app *App) Quit() {
+	// Close DBUS service
+	if app.dbusService != nil {
+		app.dbusService.Close()
+	}
+	
+	// Release the hold and quit
+	app.Release()
+	app.Application.Quit()
 }

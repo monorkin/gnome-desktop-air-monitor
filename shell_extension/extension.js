@@ -1,429 +1,331 @@
-// extension.js
-'use strict';
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
+import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
-const { Clutter, GObject, St } = imports.gi;
-const Main = imports.ui.main;
-const PanelMenu = imports.ui.panelMenu;
-const PopupMenu = imports.ui.popupMenu;
-const ByteArray = imports.byteArray;
-const Gio = imports.gi.Gio;
+const { GObject, St, Gio, GLib, Clutter } = imports.gi;
 
-// DBus interface info
-const AwairDbusInterface = `<node>
-  <interface name="com.example.AwairMonitor">
-    <method name="GetDevices">
-      <arg type="aa{sv}" direction="out" name="devices"/>
+// DBUS interface for Air Monitor communication
+const AirMonitorInterface = `<node>
+  <interface name="io.stanko.AirMonitor">
+    <method name="GetSelectedDevice">
+      <arg type="a{sv}" direction="out" name="device"/>
     </method>
-    <method name="RefreshDevices">
+    <method name="OpenApp">
     </method>
-    <method name="GetPinnedMetrics">
-      <arg type="as" direction="out" name="metrics"/>
+    <method name="OpenSettings">
     </method>
-    <method name="SetPinnedMetric">
-      <arg type="s" direction="in" name="metric"/>
-      <arg type="b" direction="in" name="pinned"/>
+    <method name="Quit">
     </method>
-    <signal name="DevicesUpdated">
-      <arg type="aa{sv}" name="devices"/>
-    </signal>
-    <signal name="PinnedMetricsChanged">
-      <arg type="as" name="metrics"/>
+    <signal name="DeviceUpdated">
+      <arg type="a{sv}" name="device"/>
     </signal>
   </interface>
 </node>`;
 
-const AwairProxy = Gio.DBusProxy.makeProxyWrapper(AwairDbusInterface);
+const AirMonitorProxy = Gio.DBusProxy.makeProxyWrapper(AirMonitorInterface);
 
-// Awair indicator component
-var AwairIndicator = GObject.registerClass(
-class AwairIndicator extends PanelMenu.Button {
+const AirMonitorIndicator = GObject.registerClass(
+  class AirMonitorIndicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, 'Awair Indicator');
-        
-        // Create the tray icon
-        this._icon = new St.Icon({
-            icon_name: 'sensors-applet',
-            style_class: 'system-status-icon',
-        });
-        
-        // Primary display (shows main pinned metric)
-        this._primaryIndicator = new St.Label({
-            text: '...',
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        
-        // Box to hold icon and text
-        let box = new St.BoxLayout();
-        box.add_child(this._icon);
-        box.add_child(this._primaryIndicator);
-        this.add_child(box);
-        
-        // Initialize menu
-        this._initMenu();
-        
-        // Connect to DBus
-        this._connectDBus();
-        
-        // Refresh data every 60 seconds
-        this._refreshTimeout = null;
-        this._startRefreshTimer();
+      super._init(0.0, "Air Monitor", false);
+
+      // Create the icon and score display
+      this._icon = new St.Icon({
+        icon_name: "weather-clear-symbolic",
+        style_class: "system-status-icon",
+      });
+
+      this._scoreLabel = new St.Label({
+        text: "--",
+        y_align: Clutter.ActorAlign.CENTER,
+        style: "margin-left: 4px; font-weight: bold;",
+      });
+
+      // Container for icon and score
+      const box = new St.BoxLayout({
+        style_class: "panel-status-menu-box",
+      });
+      box.add_child(this._icon);
+      box.add_child(this._scoreLabel);
+      this.add_child(box);
+
+      // Initialize menu
+      this._buildMenu();
+
+      // Connect to DBUS
+      this._connectDBus();
+
+      // Start periodic updates
+      this._startUpdateTimer();
+
+      // Current device data
+      this._currentDevice = null;
     }
-    
-    _initMenu() {
-        // Header section
-        this._headerSection = new PopupMenu.PopupMenuSection();
-        this.menu.addMenuItem(this._headerSection);
-        
-        // Device sections will be added dynamically
-        this._deviceSections = {};
-        
-        // Add separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        
-        // Settings section
-        let settingsSection = new PopupMenu.PopupMenuSection();
-        
-        // Pin metrics options
-        this._pinMetricsMenu = new PopupMenu.PopupSubMenuMenuItem('Pin Metrics');
-        this._initPinMetricsMenu();
-        settingsSection.addMenuItem(this._pinMetricsMenu);
-        
-        // Open main app button
-        let openAppItem = new PopupMenu.PopupMenuItem('Open Awair Monitor');
-        openAppItem.connect('activate', () => {
-            let appInfo = Gio.AppInfo.create_from_commandline(
-                'awair-monitor', 'Awair Monitor', 
-                Gio.AppInfoCreateFlags.NONE
-            );
-            appInfo.launch([], null);
-        });
-        settingsSection.addMenuItem(openAppItem);
-        
-        // Refresh now button
-        let refreshItem = new PopupMenu.PopupMenuItem('Refresh Now');
-        refreshItem.connect('activate', () => {
-            this._refreshData(true);
-        });
-        settingsSection.addMenuItem(refreshItem);
-        
-        this.menu.addMenuItem(settingsSection);
+
+    _buildMenu() {
+      // Device info section
+      this._deviceSection = new PopupMenu.PopupMenuSection();
+      this.menu.addMenuItem(this._deviceSection);
+
+      // Separator
+      this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+      // Action buttons
+      const actionsSection = new PopupMenu.PopupMenuSection();
+
+      // Open app button
+      this._openAppItem = new PopupMenu.PopupMenuItem("Open Air Monitor");
+      this._openAppItem.connect("activate", () => this._openApp());
+      actionsSection.addMenuItem(this._openAppItem);
+
+      // Settings button
+      this._settingsItem = new PopupMenu.PopupMenuItem("Settings");
+      this._settingsItem.connect("activate", () => this._openSettings());
+      actionsSection.addMenuItem(this._settingsItem);
+
+      // Separator before quit
+      actionsSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+      // Quit button
+      this._quitItem = new PopupMenu.PopupMenuItem("Quit Air Monitor");
+      this._quitItem.connect("activate", () => this._quitApp());
+      actionsSection.addMenuItem(this._quitItem);
+
+      this.menu.addMenuItem(actionsSection);
+
+      // Initial state
+      this._updateDeviceDisplay(null);
     }
-    
-    _initPinMetricsMenu() {
-        // Available metrics
-        const metrics = [
-            { id: 'temp', name: 'Temperature', unit: '°C' },
-            { id: 'humidity', name: 'Humidity', unit: '%' },
-            { id: 'co2', name: 'CO₂', unit: 'ppm' },
-            { id: 'voc', name: 'VOC', unit: 'ppb' },
-            { id: 'pm25', name: 'PM2.5', unit: 'μg/m³' },
-            { id: 'score', name: 'Air Score', unit: '' }
-        ];
-        
-        // Clear existing items
-        this._pinMetricsMenu.menu.removeAll();
-        
-        // Add metric options
-        this._metricSwitches = {};
-        metrics.forEach(metric => {
-            let item = new PopupMenu.PopupSwitchMenuItem(
-                `${metric.name} ${metric.unit}`, 
-                false
-            );
-            item.connect('toggled', (item, state) => {
-                if (this._proxy) {
-                    this._proxy.SetPinnedMetricRemote(metric.id, state);
-                }
-            });
-            this._metricSwitches[metric.id] = item;
-            this._pinMetricsMenu.menu.addMenuItem(item);
-        });
-    }
-    
+
     _connectDBus() {
-        try {
-            this._proxy = new AwairProxy(
-                Gio.DBus.session,
-                'com.example.AwairMonitor',
-                '/com/example/AwairMonitor'
-            );
-            
-            // Connect signals
-            this._proxy.connectSignal('DevicesUpdated', 
-                (proxy, nameOwner, [devices]) => {
-                    this._updateDevices(devices);
-                }
-            );
-            
-            this._proxy.connectSignal('PinnedMetricsChanged',
-                (proxy, nameOwner, [metrics]) => {
-                    this._updatePinnedMetrics(metrics);
-                }
-            );
-            
-            // Initial data fetch
-            this._refreshData(true);
-        } catch (e) {
-            logError(e, 'Failed to connect to Awair Monitor DBus service');
-            this._showError('Failed to connect to Awair Monitor service');
-        }
-    }
-    
-    _startRefreshTimer() {
-        if (this._refreshTimeout) {
-            GLib.source_remove(this._refreshTimeout);
-        }
-        
-        this._refreshTimeout = GLib.timeout_add_seconds(
-            GLib.PRIORITY_DEFAULT,
-            60, // 60 seconds
-            () => {
-                this._refreshData(false);
-                return GLib.SOURCE_CONTINUE;
-            }
+      try {
+        this._proxy = new AirMonitorProxy(
+          Gio.DBus.session,
+          "io.stanko.AirMonitor",
+          "/io/stanko/AirMonitor",
         );
+
+        // Connect to device update signals
+        this._proxy.connectSignal(
+          "DeviceUpdated",
+          (proxy, nameOwner, [deviceData]) => {
+            this._updateDeviceDisplay(deviceData);
+          },
+        );
+
+        // Get initial device data
+        this._refreshDeviceData();
+      } catch (e) {
+        console.error("Failed to connect to Air Monitor DBUS service:", e);
+        this._showError("Service not available");
+      }
     }
-    
-    _refreshData(forceRefresh) {
-        if (!this._proxy) {
+
+    _startUpdateTimer() {
+      // Update every 30 seconds
+      this._updateTimeout = GLib.timeout_add_seconds(
+        GLib.PRIORITY_DEFAULT,
+        30,
+        () => {
+          this._refreshDeviceData();
+          return GLib.SOURCE_CONTINUE;
+        },
+      );
+    }
+
+    _refreshDeviceData() {
+      if (!this._proxy) {
+        return;
+      }
+
+      try {
+        this._proxy.GetSelectedDeviceRemote((result, error) => {
+          if (error) {
+            console.error("Failed to get device data:", error);
+            this._showError("Connection error");
             return;
-        }
-        
-        // Get pinned metrics
-        this._proxy.GetPinnedMetricsRemote((result, error) => {
-            if (error) {
-                logError(error, 'Failed to get pinned metrics');
-                return;
-            }
-            
-            let [metrics] = result;
-            this._updatePinnedMetrics(metrics);
+          }
+
+          const [deviceData] = result;
+          this._updateDeviceDisplay(deviceData);
         });
-        
-        // Get devices
-        this._proxy.GetDevicesRemote((result, error) => {
-            if (error) {
-                logError(error, 'Failed to get devices');
-                return;
-            }
-            
-            let [devices] = result;
-            this._updateDevices(devices);
-        });
-        
-        // Request a refresh if needed
-        if (forceRefresh) {
-            this._proxy.RefreshDevicesRemote((result, error) => {
-                if (error) {
-                    logError(error, 'Failed to refresh devices');
-                }
-            });
-        }
+      } catch (e) {
+        console.error("Error calling GetSelectedDevice:", e);
+        this._showError("Service error");
+      }
     }
-    
-    _updatePinnedMetrics(metrics) {
-        // Update pin menu switches
-        for (let metricId in this._metricSwitches) {
-            let isPinned = metrics.includes(metricId);
-            let item = this._metricSwitches[metricId];
-            if (item.state !== isPinned) {
-                item.setToggleState(isPinned);
-            }
-        }
-        
-        // Update primary display
-        if (metrics.length > 0) {
-            // Use the first pinned metric as primary indicator
-            this._primaryMetric = metrics[0];
-        } else {
-            this._primaryMetric = 'score'; // Default
-        }
-        
-        // Update display
-        this._updateDisplay();
+
+    _updateDeviceDisplay(deviceData) {
+      this._currentDevice = deviceData;
+
+      if (!deviceData) {
+        // No device selected or service not running
+        this._scoreLabel.text = "--";
+        this._icon.icon_name = "weather-clear-symbolic";
+        this._updateDeviceMenu("No device selected", []);
+        return;
+      }
+
+      // Update score in tray
+      const score = deviceData.score?.unpack() || 0;
+      this._scoreLabel.text = Math.round(score).toString();
+
+      // Update icon color based on score
+      if (score < 30) {
+        this._icon.icon_name = "weather-severe-alert-symbolic";
+        this._scoreLabel.style =
+          "margin-left: 4px; font-weight: bold; color: #e74c3c;";
+      } else if (score < 75) {
+        this._icon.icon_name = "weather-overcast-symbolic";
+        this._scoreLabel.style =
+          "margin-left: 4px; font-weight: bold; color: #f39c12;";
+      } else {
+        this._icon.icon_name = "weather-clear-symbolic";
+        this._scoreLabel.style =
+          "margin-left: 4px; font-weight: bold; color: #27ae60;";
+      }
+
+      // Prepare measurements for menu
+      const measurements = [
+        { label: "Air Quality Score", value: score.toFixed(0), unit: "" },
+        {
+          label: "Temperature",
+          value: deviceData.temperature?.unpack()?.toFixed(1) || "--",
+          unit: "°C",
+        },
+        {
+          label: "Humidity",
+          value: deviceData.humidity?.unpack()?.toFixed(1) || "--",
+          unit: "%",
+        },
+        {
+          label: "CO₂",
+          value: deviceData.co2?.unpack()?.toFixed(0) || "--",
+          unit: " ppm",
+        },
+        {
+          label: "VOC",
+          value: deviceData.voc?.unpack()?.toFixed(0) || "--",
+          unit: " ppb",
+        },
+        {
+          label: "PM2.5",
+          value: deviceData.pm25?.unpack()?.toFixed(1) || "--",
+          unit: " μg/m³",
+        },
+      ];
+
+      const deviceName = deviceData.name?.unpack() || "Unknown Device";
+      this._updateDeviceMenu(deviceName, measurements);
     }
-    
-    _updateDevices(devices) {
-        // Clear existing device sections
-        for (let deviceId in this._deviceSections) {
-            if (this._deviceSections[deviceId]) {
-                this._deviceSections[deviceId].destroy();
-                delete this._deviceSections[deviceId];
-            }
-        }
-        
-        // Update header
-        this._headerSection.removeAll();
-        if (devices.length === 0) {
-            let item = new PopupMenu.PopupMenuItem('No devices found');
-            item.setSensitive(false);
-            this._headerSection.addMenuItem(item);
-        } else {
-            let item = new PopupMenu.PopupMenuItem(`${devices.length} Awair devices found`);
-            item.setSensitive(false);
-            this._headerSection.addMenuItem(item);
-        }
-        
-        // Add device sections
-        devices.forEach(device => {
-            let deviceId = device.DeviceID.unpack();
-            let deviceType = device.Type.unpack();
-            let deviceName = `${deviceType} (${deviceId})`;
-            
-            // Create device section
-            let section = new PopupMenu.PopupMenuSection();
-            let title = new PopupMenu.PopupMenuItem(deviceName);
-            title.setSensitive(false);
-            section.addMenuItem(title);
-            
-            // Add metrics
-            this._addMetricItem(section, 'Temperature', 
-                device.Temperature?.unpack() || 'N/A', '°C');
-            this._addMetricItem(section, 'Humidity', 
-                device.Humidity?.unpack() || 'N/A', '%');
-            this._addMetricItem(section, 'CO₂', 
-                device.CO2?.unpack() || 'N/A', 'ppm');
-            this._addMetricItem(section, 'VOC', 
-                device.VOC?.unpack() || 'N/A', 'ppb');
-            this._addMetricItem(section, 'PM2.5', 
-                device.PM25?.unpack() || 'N/A', 'μg/m³');
-            this._addMetricItem(section, 'Air Score', 
-                device.Score?.unpack() || 'N/A', '');
-            
-            // Add to menu
-            this.menu.addMenuItem(section);
-            this._deviceSections[deviceId] = section;
-        });
-        
-        // Store devices
-        this._devices = devices;
-        
-        // Update display
-        this._updateDisplay();
-    }
-    
-    _addMetricItem(section, name, value, unit) {
-        let text = `${name}: ${value}${unit}`;
-        let item = new PopupMenu.PopupMenuItem(text);
+
+    _updateDeviceMenu(deviceName, measurements) {
+      // Clear existing device section
+      this._deviceSection.removeAll();
+
+      // Device name header
+      const deviceHeader = new PopupMenu.PopupMenuItem(deviceName);
+      deviceHeader.setSensitive(false);
+      deviceHeader.label.style = "font-weight: bold;";
+      this._deviceSection.addMenuItem(deviceHeader);
+
+      // Add measurements
+      measurements.forEach((measurement) => {
+        const text = `${measurement.label}: ${measurement.value}${measurement.unit}`;
+        const item = new PopupMenu.PopupMenuItem(text);
         item.setSensitive(false);
-        section.addMenuItem(item);
+        item.label.style = "padding-left: 20px;";
+        this._deviceSection.addMenuItem(item);
+      });
+
+      // If no measurements, show message
+      if (measurements.length === 0) {
+        const noDataItem = new PopupMenu.PopupMenuItem(
+          "No measurements available",
+        );
+        noDataItem.setSensitive(false);
+        noDataItem.label.style = "padding-left: 20px; font-style: italic;";
+        this._deviceSection.addMenuItem(noDataItem);
+      }
     }
-    
-    _updateDisplay() {
-        if (!this._devices || this._devices.length === 0) {
-            this._primaryIndicator.text = '...';
-            return;
-        }
-        
-        // Get average value for the primary metric
-        let total = 0;
-        let count = 0;
-        let unit = '';
-        
-        switch (this._primaryMetric) {
-            case 'temp':
-                this._devices.forEach(d => {
-                    if (d.Temperature) {
-                        total += d.Temperature.unpack();
-                        count++;
-                    }
-                });
-                unit = '°C';
-                break;
-            case 'humidity':
-                this._devices.forEach(d => {
-                    if (d.Humidity) {
-                        total += d.Humidity.unpack();
-                        count++;
-                    }
-                });
-                unit = '%';
-                break;
-            case 'co2':
-                this._devices.forEach(d => {
-                    if (d.CO2) {
-                        total += d.CO2.unpack();
-                        count++;
-                    }
-                });
-                unit = 'ppm';
-                break;
-            case 'voc':
-                this._devices.forEach(d => {
-                    if (d.VOC) {
-                        total += d.VOC.unpack();
-                        count++;
-                    }
-                });
-                unit = 'ppb';
-                break;
-            case 'pm25':
-                this._devices.forEach(d => {
-                    if (d.PM25) {
-                        total += d.PM25.unpack();
-                        count++;
-                    }
-                });
-                unit = 'μg/m³';
-                break;
-            case 'score':
-            default:
-                this._devices.forEach(d => {
-                    if (d.Score) {
-                        total += d.Score.unpack();
-                        count++;
-                    }
-                });
-                unit = '';
-                break;
-        }
-        
-        if (count > 0) {
-            let value = (total / count).toFixed(1);
-            this._primaryIndicator.text = `${value}${unit}`;
-        } else {
-            this._primaryIndicator.text = '...';
-        }
-    }
-    
+
     _showError(message) {
-        this._primaryIndicator.text = '!';
-        
-        this._headerSection.removeAll();
-        let item = new PopupMenu.PopupMenuItem(message);
-        item.setSensitive(false);
-        this._headerSection.addMenuItem(item);
+      this._scoreLabel.text = "!";
+      this._icon.icon_name = "dialog-error-symbolic";
+      this._scoreLabel.style =
+        "margin-left: 4px; font-weight: bold; color: #e74c3c;";
+      this._updateDeviceMenu(message, []);
     }
-    
+
+    _openApp() {
+      if (this._proxy) {
+        try {
+          this._proxy.OpenAppRemote((result, error) => {
+            if (error) {
+              console.error("Failed to open app:", error);
+            }
+          });
+        } catch (e) {
+          console.error("Error calling OpenApp:", e);
+        }
+      }
+    }
+
+    _openSettings() {
+      if (this._proxy) {
+        try {
+          this._proxy.OpenSettingsRemote((result, error) => {
+            if (error) {
+              console.error("Failed to open settings:", error);
+            }
+          });
+        } catch (e) {
+          console.error("Error calling OpenSettings:", e);
+        }
+      }
+    }
+
+    _quitApp() {
+      if (this._proxy) {
+        try {
+          this._proxy.QuitRemote((result, error) => {
+            if (error) {
+              console.error("Failed to quit app:", error);
+            }
+          });
+        } catch (e) {
+          console.error("Error calling Quit:", e);
+        }
+      }
+    }
+
     destroy() {
-        if (this._refreshTimeout) {
-            GLib.source_remove(this._refreshTimeout);
-            this._refreshTimeout = null;
-        }
-        
-        super.destroy();
-    }
-});
+      if (this._updateTimeout) {
+        GLib.source_remove(this._updateTimeout);
+        this._updateTimeout = null;
+      }
 
-// Extension hooks
-class Extension {
-    constructor() {
-        this._indicator = null;
+      super.destroy();
     }
-    
-    enable() {
-        this._indicator = new AwairIndicator();
-        Main.panel.addToStatusArea('awair-indicator', this._indicator);
-    }
-    
-    disable() {
-        if (this._indicator !== null) {
-            this._indicator.destroy();
-            this._indicator = null;
-        }
-    }
-}
+  },
+);
 
-function init() {
-    return new Extension();
+export default class AirMonitorExtension extends Extension {
+  constructor(metadata) {
+    super(metadata);
+    this._indicator = null;
+  }
+
+  enable() {
+    this._indicator = new AirMonitorIndicator();
+    Main.panel.addToStatusArea(this.uuid, this._indicator);
+  }
+
+  disable() {
+    if (this._indicator) {
+      this._indicator.destroy();
+      this._indicator = null;
+    }
+  }
 }

@@ -1,7 +1,7 @@
 {
   "uuid": "gnome-desktop-air-monitor@stanko.io",
-  "name": "GNOME Dsktop Air Monitor",
-  "description": "System tray widget that displays measurments from air quality monitors",
+  "name": "GNOME Desktop Air Monitor",
+  "description": "System tray widget that displays measurements from air quality monitors",
   "version": 1,
   "shell-version": [
     "48"
