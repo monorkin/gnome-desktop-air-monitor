@@ -73,6 +73,9 @@ func (app *App) refreshIndexPage() {
 
 func (app *App) showDevicePage(deviceIndex int) {
 	deviceData := app.devices[deviceIndex]
+	
+	// Track the currently shown device
+	app.currentDeviceSerial = deviceData.Device.SerialNumber
 
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
@@ -162,6 +165,13 @@ func (app *App) showDevicePage(deviceIndex int) {
 	scrolled.SetChild(contentBox)
 
 	pageName := fmt.Sprintf("device-%d", deviceIndex)
+	
+	// Remove existing page if it exists to avoid duplicate names
+	existingPage := app.stack.ChildByName(pageName)
+	if existingPage != nil {
+		app.stack.Remove(existingPage)
+	}
+	
 	app.stack.AddNamed(scrolled, pageName)
 	app.stack.SetVisibleChildName(pageName)
 
@@ -205,6 +215,8 @@ func (app *App) showIndexPage() {
 	app.mainWindow.SetTitle("Air Monitor")
 	app.backButton.SetVisible(false)
 	app.settingsButton.SetVisible(true)
+	// Clear current device tracking
+	app.currentDeviceSerial = ""
 }
 
 func (app *App) showSettingsPage() {
@@ -212,4 +224,25 @@ func (app *App) showSettingsPage() {
 	app.mainWindow.SetTitle("Settings")
 	app.backButton.SetVisible(true)
 	app.settingsButton.SetVisible(false)
+	// Clear current device tracking
+	app.currentDeviceSerial = ""
+}
+
+// refreshCurrentDevicePage refreshes the currently shown device page if one is displayed
+func (app *App) refreshCurrentDevicePage() {
+	if app.currentDeviceSerial == "" {
+		return // No device page is currently shown
+	}
+
+	// Find the device by serial number
+	for i, deviceData := range app.devices {
+		if deviceData.Device.SerialNumber == app.currentDeviceSerial {
+			// Re-show the device page with updated data
+			app.showDevicePage(i)
+			return
+		}
+	}
+
+	// Device not found (might have been removed), go back to index
+	app.showIndexPage()
 }
