@@ -20,12 +20,13 @@ const (
 
 type App struct {
 	*gtk.Application
-	mainWindow   *adw.ApplicationWindow
-	apiClient    *api.Client
-	stack        *gtk.Stack
-	headerBar    *adw.HeaderBar
-	backButton   *gtk.Button
-	devices      []DeviceWithMeasurement
+	mainWindow     *adw.ApplicationWindow
+	apiClient      *api.Client
+	stack          *gtk.Stack
+	headerBar      *adw.HeaderBar
+	backButton     *gtk.Button
+	settingsButton *gtk.Button
+	devices        []DeviceWithMeasurement
 }
 
 type DeviceWithMeasurement struct {
@@ -69,6 +70,12 @@ func (app *App) onActivate() {
 	})
 	app.headerBar.PackStart(app.backButton)
 	
+	app.settingsButton = gtk.NewButtonFromIconName("preferences-system-symbolic")
+	app.settingsButton.ConnectClicked(func() {
+		app.showSettingsPage()
+	})
+	app.headerBar.PackEnd(app.settingsButton)
+	
 	mainBox.Append(app.headerBar)
 
 	app.stack = gtk.NewStack()
@@ -76,6 +83,7 @@ func (app *App) onActivate() {
 	mainBox.Append(app.stack)
 
 	app.setupIndexPage()
+	app.setupSettingsPage()
 	app.mainWindow.SetContent(mainBox)
 	app.mainWindow.Present()
 
@@ -308,12 +316,51 @@ func (app *App) showDevicePage(deviceIndex int) {
 	
 	app.mainWindow.SetTitle(deviceData.Device.Name + " - Air Quality")
 	app.backButton.SetVisible(true)
+	app.settingsButton.SetVisible(false)
 }
 
 func (app *App) showIndexPage() {
 	app.stack.SetVisibleChildName("index")
 	app.mainWindow.SetTitle("Air Monitor")
 	app.backButton.SetVisible(false)
+	app.settingsButton.SetVisible(true)
+}
+
+func (app *App) showSettingsPage() {
+	app.stack.SetVisibleChildName("settings")
+	app.mainWindow.SetTitle("Settings")
+	app.backButton.SetVisible(true)
+	app.settingsButton.SetVisible(false)
+}
+
+func (app *App) setupSettingsPage() {
+	scrolled := gtk.NewScrolledWindow()
+	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
+	scrolled.SetVExpand(true)
+
+	contentBox := gtk.NewBox(gtk.OrientationVertical, 24)
+	contentBox.SetMarginTop(24)
+	contentBox.SetMarginBottom(24)
+	contentBox.SetMarginStart(24)
+	contentBox.SetMarginEnd(24)
+
+	titleLabel := gtk.NewLabel("Settings")
+	titleLabel.AddCSSClass("title-1")
+	titleLabel.SetHAlign(gtk.AlignStart)
+	contentBox.Append(titleLabel)
+
+	placeholderGroup := adw.NewPreferencesGroup()
+	placeholderGroup.SetTitle("General")
+	placeholderGroup.SetDescription("Application settings will be available here")
+
+	placeholderRow := adw.NewActionRow()
+	placeholderRow.SetTitle("Settings")
+	placeholderRow.SetSubtitle("More settings will be added here in the future")
+	placeholderGroup.Add(placeholderRow)
+
+	contentBox.Append(placeholderGroup)
+	scrolled.SetChild(contentBox)
+	app.stack.AddNamed(scrolled, "settings")
 }
 
 func (app *App) formatValue(value float64, unit string) string {
