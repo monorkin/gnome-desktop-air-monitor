@@ -183,12 +183,10 @@ loop:
 }
 
 func (client *Client) updateDevices(devices []*Device) {
-	client.log(slog.LevelDebug, "Updating devices", "count", len(devices))
 	client.devicesMutex.Lock()
 	defer client.devicesMutex.Unlock()
 
 	for _, device := range devices {
-		client.log(slog.LevelDebug, "Processing device", "ip", device.IP, "hostname", device.Hostname, "ID", device.ID)
 		if device.ID == nil {
 			continue
 		}

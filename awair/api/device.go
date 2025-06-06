@@ -17,6 +17,7 @@ type Device struct {
 	Type            *DeviceType
 	ID              *string
 	FirmwareVersion *string
+	LastMeasurement *Measurement
 	IP              string
 	Hostname        string
 	LastUpdated     time.Time
@@ -33,13 +34,19 @@ func (device *Device) FetchInfo() error {
 	device.Type = &deviceInfo.Type
 	device.LastUpdated = time.Now()
 
-	device.FetchMeasurement()
+	measurement, err := device.FetchMeasurement()
+	if err != nil {
+		device.LastMeasurement = measurement
+	}
 
 	return nil
 }
 
 func (device *Device) FetchMeasurement() (*Measurement, error) {
 	measurement, err := device.Client.FetchMeasurment(device.IP)
+	if err != nil {
+		device.LastMeasurement = measurement
+	}
 
 	return measurement, err
 }
