@@ -28,6 +28,7 @@ type App struct {
 	devices        []DeviceWithMeasurement
 	dbusService    *DBusService
 	logger         *slog.Logger
+	indexListBox   *gtk.ListBox
 }
 
 type DeviceWithMeasurement struct {
@@ -63,10 +64,15 @@ func NewApp() *App {
 }
 
 func (app *App) onActivate() {
-	app.generateMockData()
+	// Load devices from database instead of generating mock data
+	err := app.loadDevicesFromDatabase()
+	if err != nil {
+		app.logger.Error("Failed to load devices from database", "error", err)
+		// Initialize empty device list
+		app.devices = make([]DeviceWithMeasurement, 0)
+	}
 
 	// Initialize DBUS service
-	var err error
 	app.dbusService, err = NewDBusService(app)
 	if err != nil {
 		app.logger.Error("Failed to initialize DBUS service", "error", err)
@@ -184,14 +190,81 @@ func (app *App) storeDevice(device models.Device) error {
 
 	if result.Error == nil {
 		// Device exists, update it
-		existingDevice.Name = device.Name
 		existingDevice.IPAddress = device.IPAddress
-		existingDevice.DeviceType = device.DeviceType
 		existingDevice.LastSeen = device.LastSeen
 
-		return database.DB.Save(&existingDevice).Error
+		err := database.DB.Save(&existingDevice).Error
+		if err == nil {
+			// Refresh the UI after storing device
+			app.refreshDevicesFromDatabase()
+		}
+		return err
 	} else {
 		// Device doesn't exist, create it
-		return database.DB.Create(&device).Error
+		err := database.DB.Create(&device).Error
+		if err == nil {
+			// Refresh the UI after storing device
+			app.refreshDevicesFromDatabase()
+		}
+		return err
 	}
+}
+
+// loadDevicesFromDatabase loads all devices with their latest measurements from the database
+func (app *App) loadDevicesFromDatabase() error {
+	var devices []models.Device
+	err := database.DB.Find(&devices).Error
+	if err != nil {
+		app.logger.Error("Failed to load devices from database", "error", err)
+		return err
+	}
+
+	app.devices = make([]DeviceWithMeasurement, 0, len(devices))
+
+	for _, device := range devices {
+		// Get the latest measurement for this device
+		var measurement models.Measurement
+		err := database.DB.Where("device_id = ?", device.ID).
+			Order("timestamp DESC").
+			First(&measurement).Error
+
+		deviceWithMeasurement := DeviceWithMeasurement{
+			Device: device,
+		}
+
+		if err == nil {
+			// Found measurement
+			deviceWithMeasurement.Measurement = measurement
+		} else {
+			// No measurement found, create a placeholder
+			deviceWithMeasurement.Measurement = models.Measurement{
+				DeviceID:    device.ID,
+				Timestamp:   time.Now(),
+				Temperature: 0,
+				Humidity:    0,
+				CO2:         0,
+				VOC:         0,
+				PM25:        0,
+				Score:       0,
+			}
+			app.logger.Debug("No measurements found for device", "device_id", device.ID, "device_name", device.Name)
+		}
+
+		app.devices = append(app.devices, deviceWithMeasurement)
+	}
+
+	app.logger.Info("Loaded devices from database", "count", len(app.devices))
+	return nil
+}
+
+// refreshDevicesFromDatabase reloads devices and refreshes the UI
+func (app *App) refreshDevicesFromDatabase() {
+	err := app.loadDevicesFromDatabase()
+	if err != nil {
+		app.logger.Error("Failed to refresh devices from database", "error", err)
+		return
+	}
+
+	// Refresh the index page if it exists
+	app.refreshIndexPage()
 }
