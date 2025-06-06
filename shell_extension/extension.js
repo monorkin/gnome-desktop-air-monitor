@@ -114,6 +114,22 @@ const AirMonitorIndicator = GObject.registerClass(
           },
         );
 
+        // Monitor service availability
+        this._nameWatcherId = Gio.DBus.session.watch_name(
+          "io.stanko.AirMonitor",
+          Gio.BusNameWatcherFlags.NONE,
+          () => {
+            // Service appeared
+            this.visible = true;
+            this._refreshDeviceData();
+          },
+          () => {
+            // Service disappeared
+            this.visible = false;
+            this._showError("Service not available");
+          }
+        );
+
         // Get initial device data
         this._refreshDeviceData();
       } catch (e) {
@@ -304,6 +320,11 @@ const AirMonitorIndicator = GObject.registerClass(
       if (this._updateTimeout) {
         GLib.source_remove(this._updateTimeout);
         this._updateTimeout = null;
+      }
+
+      if (this._nameWatcherId) {
+        Gio.DBus.session.unwatch_name(this._nameWatcherId);
+        this._nameWatcherId = null;
       }
 
       super.destroy();
