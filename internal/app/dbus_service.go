@@ -105,7 +105,7 @@ func (s *DBusService) GetSelectedDevice() (map[string]dbus.Variant, *dbus.Error)
 
 	// Use first device as "selected" device for now
 	device := s.app.devices[0]
-	
+
 	return map[string]dbus.Variant{
 		"name":        dbus.MakeVariant(device.Device.Name),
 		"score":       dbus.MakeVariant(device.Measurement.Score),

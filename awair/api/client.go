@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -25,9 +26,10 @@ type Client struct {
 	httpClient             http.Client
 	deviceDiscoveryContext context.Context
 	deviceDiscoveryCancel  context.CancelFunc
-	devices                map[string]Device
+	devices                map[string]*Device
 	devicesMutex           sync.RWMutex
 	onDeviceDiscovered     func(Device)
+	logger                 *slog.Logger
 }
 
 type DeviceInfo struct {
@@ -37,25 +39,43 @@ type DeviceInfo struct {
 }
 
 func NewClient() *Client {
+	return NewClientWithLogger(nil)
+}
+
+func NewClientWithLogger(logger *slog.Logger) *Client {
 	return &Client{
 		httpClient: http.Client{
 			Timeout: REQUEST_TIMEOUT,
 		},
-		devices: make(map[string]Device),
+		devices: make(map[string]*Device),
+		logger:  logger,
+	}
+}
+
+func (client *Client) SetOnDeviceDiscovered(callback func(Device)) {
+	client.onDeviceDiscovered = callback
+}
+
+func (client *Client) log(level slog.Level, msg string, args ...any) {
+	if client.logger != nil {
+		client.logger.Log(context.Background(), level, msg, args...)
 	}
 }
 
 func (client *Client) StartDeviceDiscovery() {
 	client.StopDeviceDiscovery()
+	client.log(slog.LevelDebug, "Initializing device discovery")
 
 	client.deviceDiscoveryContext, client.deviceDiscoveryCancel = context.WithCancel(context.Background())
 
 	go func() {
+		client.log(slog.LevelInfo, "Starting device discovery")
 		devices, err := client.discoverDevices(client.deviceDiscoveryContext)
 		if err != nil {
-			fmt.Printf("Error during initial device discovery: %v\n", err)
+			client.log(slog.LevelError, "Error during initial device discovery", "error", err)
 		}
 
+		client.log(slog.LevelDebug, "Initial device discovery completed", "devices_count", len(devices))
 		client.updateDevices(devices)
 
 		// Then run periodic discovery
@@ -67,12 +87,13 @@ func (client *Client) StartDeviceDiscovery() {
 			case <-ticker.C:
 				devices, err := client.discoverDevices(client.deviceDiscoveryContext)
 				if err != nil {
-					fmt.Printf("Error during periodic device discovery: %v\n", err)
+					client.log(slog.LevelError, "Error during periodic device discovery", "error", err)
 					continue
 				}
+				client.log(slog.LevelDebug, "Periodic device discovery completed", "devices_count", len(devices))
 				client.updateDevices(devices)
 			case <-client.deviceDiscoveryContext.Done():
-				fmt.Println("Device discovery stopped")
+				client.log(slog.LevelInfo, "Device discovery stopped")
 				return
 			}
 		}
@@ -81,12 +102,13 @@ func (client *Client) StartDeviceDiscovery() {
 
 func (client *Client) StopDeviceDiscovery() {
 	if client.deviceDiscoveryCancel != nil {
+		client.log(slog.LevelDebug, "Stopping device discovery")
 		client.deviceDiscoveryCancel()
 		client.deviceDiscoveryCancel = nil
 	}
 }
 
-func (client *Client) discoverDevices(ctx context.Context) ([]Device, error) {
+func (client *Client) discoverDevices(ctx context.Context) ([]*Device, error) {
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize resolver: %w", err)
@@ -96,11 +118,11 @@ func (client *Client) discoverDevices(ctx context.Context) ([]Device, error) {
 	go func() {
 		err = resolver.Browse(ctx, "_http._tcp", "local.", entries)
 		if err != nil {
-			fmt.Printf("Failed to browse: %v\n", err)
+			client.log(slog.LevelError, "Failed to browse for devices", "error", err)
 		}
 	}()
 
-	var devices []Device
+	var devices []*Device
 	timeout := time.After(5 * time.Second)
 
 loop:
@@ -113,7 +135,7 @@ loop:
 				continue
 			}
 
-			devices = append(devices, Device{
+			devices = append(devices, &Device{
 				Client:   client,
 				IP:       entry.AddrIPv4[0].String(),
 				Hostname: hostname,
@@ -132,12 +154,17 @@ loop:
 
 	for _, device := range devices {
 		wg.Add(1)
-		go func(device Device) {
+		go func(device *Device) {
 			defer wg.Done()
 
+			client.log(slog.LevelDebug, "Fetching device info", "ip", device.IP, "hostname", device.Hostname)
+
 			if err := device.FetchInfo(); err != nil {
+				client.log(slog.LevelError, "Failed to fetch device info", "ip", device.IP, "error", err)
 				errChan <- fmt.Errorf("failed to fetch device info for %s: %w", device.IP, err)
 			}
+
+			client.log(slog.LevelDebug, "Device info fetched", "ip", device.IP, "ID", *device.ID, "type", *device.Type)
 		}(device)
 	}
 
@@ -148,14 +175,20 @@ loop:
 		return devices, err
 	}
 
+	for _, device := range devices {
+		client.log(slog.LevelDebug, "Device discovered", "ip", device.IP, "hostname", device.Hostname, "ID", *device.ID, "type", *device.Type)
+	}
+
 	return devices, nil
 }
 
-func (client *Client) updateDevices(devices []Device) {
+func (client *Client) updateDevices(devices []*Device) {
+	client.log(slog.LevelDebug, "Updating devices", "count", len(devices))
 	client.devicesMutex.Lock()
 	defer client.devicesMutex.Unlock()
 
 	for _, device := range devices {
+		client.log(slog.LevelDebug, "Processing device", "ip", device.IP, "hostname", device.Hostname, "ID", device.ID)
 		if device.ID == nil {
 			continue
 		}
@@ -166,7 +199,7 @@ func (client *Client) updateDevices(devices []Device) {
 			client.devices[*device.ID] = device
 
 			if client.onDeviceDiscovered != nil {
-				go client.onDeviceDiscovered(device)
+				go client.onDeviceDiscovered(*device)
 			}
 		} else {
 			device.LastUpdated = existingDevice.LastUpdated
@@ -175,11 +208,11 @@ func (client *Client) updateDevices(devices []Device) {
 	}
 }
 
-func (client *Client) GetDevices() []Device {
+func (client *Client) GetDevices() []*Device {
 	client.devicesMutex.RLock()
 	defer client.devicesMutex.RUnlock()
 
-	devices := make([]Device, 0, len(client.devices))
+	devices := make([]*Device, 0, len(client.devices))
 
 	for _, device := range client.devices {
 		devices = append(devices, device)
@@ -237,9 +270,9 @@ func (client *Client) FetchDeviceInfo(ip string) (*DeviceInfo, error) {
 	lowercaseID := strings.ToLower(deviceInfo.ID)
 
 	switch {
-	case strings.HasPrefix(lowercaseID, "awair-element-"):
+	case strings.HasPrefix(lowercaseID, "awair-element_"):
 		deviceInfo.Type = DeviceTypeAwairElement
-	case strings.HasPrefix(lowercaseID, "awair-omni-"):
+	case strings.HasPrefix(lowercaseID, "awair-omni_"):
 		deviceInfo.Type = DeviceTypeAwairOmni
 	default:
 		deviceInfo.Type = DeviceTypeUnknown
@@ -278,7 +311,7 @@ func (client *Client) FetchMeasurment(ip string) (*Measurement, error) {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	fmt.Println("Measurement data:", data)
+	client.log(slog.LevelDebug, "Measurement data fetched", "data", data)
 
 	return data, nil
 }
