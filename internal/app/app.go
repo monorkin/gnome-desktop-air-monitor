@@ -10,6 +10,7 @@ import (
 	glib "github.com/diamondburned/gotk4/pkg/glib/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 	api "github.com/monorkin/gnome-desktop-air-monitor/awair/api"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/config"
 	database "github.com/monorkin/gnome-desktop-air-monitor/internal/database"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/models"
 )
@@ -18,19 +19,21 @@ const (
 	APP_IDENTIFIER = "io.stanko.gnome-desktop-air-monitor"
 )
 
+var settings *config.Settings
+
 type App struct {
 	*gtk.Application
-	mainWindow           *adw.ApplicationWindow
-	apiClient            *api.Client
-	stack                *gtk.Stack
-	headerBar            *adw.HeaderBar
-	backButton           *gtk.Button
-	settingsButton       *gtk.Button
-	devices              []DeviceWithMeasurement
-	dbusService          *DBusService
-	logger               *slog.Logger
-	indexListBox         *gtk.ListBox
-	currentDeviceSerial  string // Serial number of currently shown device, empty if none
+	mainWindow          *adw.ApplicationWindow
+	apiClient           *api.Client
+	stack               *gtk.Stack
+	headerBar           *adw.HeaderBar
+	backButton          *gtk.Button
+	settingsButton      *gtk.Button
+	devices             []DeviceWithMeasurement
+	dbusService         *DBusService
+	logger              *slog.Logger
+	indexListBox        *gtk.ListBox
+	currentDeviceSerial string // Serial number of currently shown device, empty if none
 }
 
 type DeviceWithMeasurement struct {
@@ -39,6 +42,11 @@ type DeviceWithMeasurement struct {
 }
 
 func NewApp() *App {
+	newSettings, settings := config.LoadOrInitializeSettingsFromDefaultLocation()
+	if newSettings {
+		settings.Save()
+	}
+
 	database.Init()
 
 	// Create logger
@@ -288,10 +296,10 @@ func (app *App) refreshDevicesFromDatabase() {
 
 	// Refresh the index page if it exists
 	app.refreshIndexPage()
-	
+
 	// Refresh the current device page if one is shown
 	app.refreshCurrentDevicePage()
-	
+
 	app.logger.Debug("UI refresh completed")
 }
 
@@ -342,7 +350,7 @@ func (app *App) startDevicePolling(apiDevice api.Device) {
 			device.SetOnMeasurement(func(measurement *api.Measurement) {
 				app.onDeviceMeasurement(apiDevice, measurement)
 			})
-			
+
 			// Start polling
 			device.StartPolling()
 			app.logger.Info("Started polling for device", "device_id", *device.ID, "hostname", device.Hostname)
