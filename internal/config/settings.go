@@ -8,6 +8,7 @@ import (
 
 type Settings struct {
 	StatusBarDeviceSerialNumber *string `json:"status_bar_device_serial_number"`
+	ShowShellExtension          bool    `json:"show_shell_extension"`
 }
 
 func DefaultSettingsPath() string {
@@ -25,6 +26,7 @@ func LoadOrInitializeSettings(path string) (bool, *Settings) {
 
 	return true, &Settings{
 		StatusBarDeviceSerialNumber: nil,
+		ShowShellExtension:          true, // Default to enabled
 	}
 }
 

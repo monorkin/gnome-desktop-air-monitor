@@ -62,12 +62,24 @@ func NewDBusService(app *App) (*DBusService, error) {
 					{
 						Name: "Quit",
 					},
+					{
+						Name: "GetVisibility",
+						Args: []introspect.Arg{
+							{Name: "visible", Direction: "out", Type: "b"},
+						},
+					},
 				},
 				Signals: []introspect.Signal{
 					{
 						Name: "DeviceUpdated",
 						Args: []introspect.Arg{
 							{Name: "device", Type: "a{sv}"},
+						},
+					},
+					{
+						Name: "VisibilityChanged",
+						Args: []introspect.Arg{
+							{Name: "visible", Type: "b"},
 						},
 					},
 				},
@@ -98,23 +110,26 @@ func NewDBusService(app *App) (*DBusService, error) {
 
 // GetSelectedDevice returns the currently selected device data
 func (s *DBusService) GetSelectedDevice() (map[string]dbus.Variant, *dbus.Error) {
-	// For now, return the first device from mock data (or empty if none)
-	if len(s.app.devices) == 0 {
+	// Get the selected device from settings or first device
+	selectedDevice, err := s.app.getSelectedDeviceForShellExtension()
+	if err != nil {
+		s.app.logger.Error("Failed to get selected device for DBus", "error", err)
+		return map[string]dbus.Variant{}, nil
+	}
+	
+	if selectedDevice == nil {
 		return map[string]dbus.Variant{}, nil
 	}
 
-	// Use first device as "selected" device for now
-	device := s.app.devices[0]
-
 	return map[string]dbus.Variant{
-		"name":        dbus.MakeVariant(device.Device.Name),
-		"score":       dbus.MakeVariant(device.Measurement.Score),
-		"temperature": dbus.MakeVariant(device.Measurement.Temperature),
-		"humidity":    dbus.MakeVariant(device.Measurement.Humidity),
-		"co2":         dbus.MakeVariant(device.Measurement.CO2),
-		"voc":         dbus.MakeVariant(device.Measurement.VOC),
-		"pm25":        dbus.MakeVariant(device.Measurement.PM25),
-		"timestamp":   dbus.MakeVariant(device.Measurement.Timestamp.Unix()),
+		"name":        dbus.MakeVariant(selectedDevice.Device.Name),
+		"score":       dbus.MakeVariant(selectedDevice.Measurement.Score),
+		"temperature": dbus.MakeVariant(selectedDevice.Measurement.Temperature),
+		"humidity":    dbus.MakeVariant(selectedDevice.Measurement.Humidity),
+		"co2":         dbus.MakeVariant(selectedDevice.Measurement.CO2),
+		"voc":         dbus.MakeVariant(selectedDevice.Measurement.VOC),
+		"pm25":        dbus.MakeVariant(selectedDevice.Measurement.PM25),
+		"timestamp":   dbus.MakeVariant(selectedDevice.Measurement.Timestamp.Unix()),
 	}, nil
 }
 
@@ -145,25 +160,45 @@ func (s *DBusService) Quit() *dbus.Error {
 	return nil
 }
 
+// GetVisibility returns the current shell extension visibility setting
+func (s *DBusService) GetVisibility() (bool, *dbus.Error) {
+	return settings.ShowShellExtension, nil
+}
+
 // EmitDeviceUpdated sends a device update signal
 func (s *DBusService) EmitDeviceUpdated() error {
-	if len(s.app.devices) == 0 {
+	selectedDevice, err := s.app.getSelectedDeviceForShellExtension()
+	if err != nil {
+		s.app.logger.Error("Failed to get selected device for signal", "error", err)
+		return err
+	}
+	
+	if selectedDevice == nil {
 		return nil
 	}
 
-	device := s.app.devices[0]
 	deviceData := map[string]dbus.Variant{
-		"name":        dbus.MakeVariant(device.Device.Name),
-		"score":       dbus.MakeVariant(device.Measurement.Score),
-		"temperature": dbus.MakeVariant(device.Measurement.Temperature),
-		"humidity":    dbus.MakeVariant(device.Measurement.Humidity),
-		"co2":         dbus.MakeVariant(device.Measurement.CO2),
-		"voc":         dbus.MakeVariant(device.Measurement.VOC),
-		"pm25":        dbus.MakeVariant(device.Measurement.PM25),
-		"timestamp":   dbus.MakeVariant(device.Measurement.Timestamp.Unix()),
+		"name":        dbus.MakeVariant(selectedDevice.Device.Name),
+		"score":       dbus.MakeVariant(selectedDevice.Measurement.Score),
+		"temperature": dbus.MakeVariant(selectedDevice.Measurement.Temperature),
+		"humidity":    dbus.MakeVariant(selectedDevice.Measurement.Humidity),
+		"co2":         dbus.MakeVariant(selectedDevice.Measurement.CO2),
+		"voc":         dbus.MakeVariant(selectedDevice.Measurement.VOC),
+		"pm25":        dbus.MakeVariant(selectedDevice.Measurement.PM25),
+		"timestamp":   dbus.MakeVariant(selectedDevice.Measurement.Timestamp.Unix()),
 	}
 
 	return s.conn.Emit(dbus.ObjectPath(dbusPath), dbusInterface+".DeviceUpdated", deviceData)
+}
+
+// EmitVisibilityChanged sends a visibility change signal
+func (s *DBusService) EmitVisibilityChanged() error {
+	// Get visibility setting from the app's settings
+	visible := settings.ShowShellExtension
+	
+	s.app.logger.Debug("Emitting visibility changed signal", "visible", visible)
+	
+	return s.conn.Emit(dbus.ObjectPath(dbusPath), dbusInterface+".VisibilityChanged", visible)
 }
 
 // StartPeriodicUpdates begins sending periodic device updates

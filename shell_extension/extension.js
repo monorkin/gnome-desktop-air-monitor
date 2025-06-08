@@ -17,8 +17,14 @@ const AirMonitorInterface = `<node>
     </method>
     <method name="Quit">
     </method>
+    <method name="GetVisibility">
+      <arg type="b" direction="out" name="visible"/>
+    </method>
     <signal name="DeviceUpdated">
       <arg type="a{sv}" name="device"/>
+    </signal>
+    <signal name="VisibilityChanged">
+      <arg type="b" name="visible"/>
     </signal>
   </interface>
 </node>`;
@@ -114,13 +120,21 @@ const AirMonitorIndicator = GObject.registerClass(
           },
         );
 
+        // Connect to visibility change signals
+        this._proxy.connectSignal(
+          "VisibilityChanged",
+          (proxy, nameOwner, [visible]) => {
+            this._setVisibility(visible);
+          },
+        );
+
         // Monitor service availability
         this._nameWatcherId = Gio.DBus.session.watch_name(
           "io.stanko.AirMonitor",
           Gio.BusNameWatcherFlags.NONE,
           () => {
-            // Service appeared
-            this.visible = true;
+            // Service appeared - get initial visibility and device data
+            this._checkInitialVisibility();
             this._refreshDeviceData();
           },
           () => {
@@ -150,8 +164,44 @@ const AirMonitorIndicator = GObject.registerClass(
       );
     }
 
-    _refreshDeviceData() {
+    _checkInitialVisibility() {
       if (!this._proxy) {
+        return;
+      }
+
+      try {
+        this._proxy.GetVisibilityRemote((result, error) => {
+          if (error) {
+            console.error("Failed to get visibility setting:", error);
+            // Default to visible if we can't get the setting
+            this.visible = true;
+            return;
+          }
+
+          const [visible] = result;
+          this._setVisibility(visible);
+        });
+      } catch (e) {
+        console.error("Error calling GetVisibility:", e);
+        // Default to visible if we can't get the setting
+        this.visible = true;
+      }
+    }
+
+    _setVisibility(visible) {
+      this.visible = visible;
+      if (!visible) {
+        // Hide the indicator when disabled
+        console.log("Shell extension visibility disabled");
+      } else {
+        // Show the indicator and refresh data
+        console.log("Shell extension visibility enabled");
+        this._refreshDeviceData();
+      }
+    }
+
+    _refreshDeviceData() {
+      if (!this._proxy || !this.visible) {
         return;
       }
 

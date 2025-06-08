@@ -33,7 +33,35 @@ func (app *App) populateIndexPage() {
 		app.indexListBox.Remove(app.indexListBox.FirstChild())
 	}
 
-	if len(app.devices) == 0 {
+	// Fetch devices from database
+	devices, err := app.getDevicesWithMeasurements()
+	if err != nil {
+		// Show error state
+		errorBox := gtk.NewBox(gtk.OrientationVertical, 12)
+		errorBox.SetHAlign(gtk.AlignCenter)
+		errorBox.SetVAlign(gtk.AlignCenter)
+		errorBox.SetMarginTop(48)
+		errorBox.SetMarginBottom(48)
+
+		errorIcon := gtk.NewLabel("⚠️")
+		errorIcon.AddCSSClass("title-1")
+		errorBox.Append(errorIcon)
+
+		errorLabel := gtk.NewLabel("Error loading devices")
+		errorLabel.AddCSSClass("title-2")
+		errorBox.Append(errorLabel)
+
+		errorDescription := gtk.NewLabel("Failed to load devices from database")
+		errorDescription.AddCSSClass("dim-label")
+		errorDescription.SetWrap(true)
+		errorDescription.SetJustify(gtk.JustifyCenter)
+		errorBox.Append(errorDescription)
+
+		app.indexListBox.Append(errorBox)
+		return
+	}
+
+	if len(devices) == 0 {
 		// Show empty state
 		emptyBox := gtk.NewBox(gtk.OrientationVertical, 12)
 		emptyBox.SetHAlign(gtk.AlignCenter)
@@ -59,7 +87,7 @@ func (app *App) populateIndexPage() {
 		return
 	}
 
-	for i, deviceData := range app.devices {
+	for i, deviceData := range devices {
 		row := app.createDeviceRow(deviceData, i)
 		app.indexListBox.Append(row)
 	}
@@ -72,7 +100,14 @@ func (app *App) refreshIndexPage() {
 }
 
 func (app *App) showDevicePage(deviceIndex int) {
-	deviceData := app.devices[deviceIndex]
+	// Fetch devices from database
+	devices, err := app.getDevicesWithMeasurements()
+	if err != nil || deviceIndex >= len(devices) {
+		app.showIndexPage()
+		return
+	}
+	
+	deviceData := devices[deviceIndex]
 	
 	// Track the currently shown device
 	app.currentDeviceSerial = deviceData.Device.SerialNumber
@@ -196,16 +231,36 @@ func (app *App) setupSettingsPage() {
 	titleLabel.SetHAlign(gtk.AlignStart)
 	contentBox.Append(titleLabel)
 
-	placeholderGroup := adw.NewPreferencesGroup()
-	placeholderGroup.SetTitle("General")
-	placeholderGroup.SetDescription("Application settings will be available here")
+	// Shell Extension settings group
+	shellGroup := adw.NewPreferencesGroup()
+	shellGroup.SetTitle("Shell Extension")
+	shellGroup.SetDescription("Configure the status bar indicator")
 
-	placeholderRow := adw.NewActionRow()
-	placeholderRow.SetTitle("Settings")
-	placeholderRow.SetSubtitle("More settings will be added here in the future")
-	placeholderGroup.Add(placeholderRow)
+	// Shell extension visibility toggle
+	visibilityRow := adw.NewActionRow()
+	visibilityRow.SetTitle("Show Status Bar Indicator")
+	visibilityRow.SetSubtitle("Display air quality information in the top bar")
 
-	contentBox.Append(placeholderGroup)
+	visibilitySwitch := gtk.NewSwitch()
+	visibilitySwitch.SetVAlign(gtk.AlignCenter)
+	visibilityRow.AddSuffix(visibilitySwitch)
+	visibilityRow.SetActivatableWidget(visibilitySwitch)
+
+	// Set initial state and connect to changes
+	app.setupVisibilityToggle(visibilitySwitch)
+
+	shellGroup.Add(visibilityRow)
+
+	// Device selection row
+	deviceRow := adw.NewActionRow()
+	deviceRow.SetTitle("Status Bar Device")
+	deviceRow.SetSubtitle("Choose which device to display in the shell extension")
+
+	// Create dropdown for device selection
+	app.setupDeviceDropdown(deviceRow)
+
+	shellGroup.Add(deviceRow)
+	contentBox.Append(shellGroup)
 	scrolled.SetChild(contentBox)
 	app.stack.AddNamed(scrolled, "settings")
 }
@@ -234,8 +289,15 @@ func (app *App) refreshCurrentDevicePage() {
 		return // No device page is currently shown
 	}
 
+	// Fetch devices from database
+	devices, err := app.getDevicesWithMeasurements()
+	if err != nil {
+		app.showIndexPage()
+		return
+	}
+
 	// Find the device by serial number
-	for i, deviceData := range app.devices {
+	for i, deviceData := range devices {
 		if deviceData.Device.SerialNumber == app.currentDeviceSerial {
 			// Re-show the device page with updated data
 			app.showDevicePage(i)

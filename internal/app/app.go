@@ -29,7 +29,6 @@ type App struct {
 	headerBar           *adw.HeaderBar
 	backButton          *gtk.Button
 	settingsButton      *gtk.Button
-	devices             []DeviceWithMeasurement
 	dbusService         *DBusService
 	logger              *slog.Logger
 	indexListBox        *gtk.ListBox
@@ -42,7 +41,8 @@ type DeviceWithMeasurement struct {
 }
 
 func NewApp() *App {
-	newSettings, settings := config.LoadOrInitializeSettingsFromDefaultLocation()
+	newSettings, settingsLoaded := config.LoadOrInitializeSettingsFromDefaultLocation()
+	settings = settingsLoaded
 	if newSettings {
 		settings.Save()
 	}
@@ -74,15 +74,10 @@ func NewApp() *App {
 }
 
 func (app *App) onActivate() {
-	// Load devices from database instead of generating mock data
-	err := app.loadDevicesFromDatabase()
-	if err != nil {
-		app.logger.Error("Failed to load devices from database", "error", err)
-		// Initialize empty device list
-		app.devices = make([]DeviceWithMeasurement, 0)
-	}
+	// Database is already initialized in NewApp()
 
 	// Initialize DBUS service
+	var err error
 	app.dbusService, err = NewDBusService(app)
 	if err != nil {
 		app.logger.Error("Failed to initialize DBUS service", "error", err)
@@ -90,6 +85,8 @@ func (app *App) onActivate() {
 		app.logger.Info("DBUS service started")
 		// Start periodic updates
 		app.dbusService.StartPeriodicUpdates()
+		// Send initial visibility state
+		app.dbusService.EmitVisibilityChanged()
 	}
 
 	app.mainWindow = adw.NewApplicationWindow(app.Application)
@@ -236,61 +233,9 @@ func (app *App) storeDevice(device models.Device) error {
 	}
 }
 
-// loadDevicesFromDatabase loads all devices with their latest measurements from the database
-func (app *App) loadDevicesFromDatabase() error {
-	var devices []models.Device
-	err := database.DB.Find(&devices).Error
-	if err != nil {
-		app.logger.Error("Failed to load devices from database", "error", err)
-		return err
-	}
-
-	app.devices = make([]DeviceWithMeasurement, 0, len(devices))
-
-	for _, device := range devices {
-		// Get the latest measurement for this device
-		var measurement models.Measurement
-		err := database.DB.Where("device_id = ?", device.ID).
-			Order("timestamp DESC").
-			First(&measurement).Error
-
-		deviceWithMeasurement := DeviceWithMeasurement{
-			Device: device,
-		}
-
-		if err == nil {
-			// Found measurement
-			deviceWithMeasurement.Measurement = measurement
-		} else {
-			// No measurement found, create a placeholder
-			deviceWithMeasurement.Measurement = models.Measurement{
-				DeviceID:    device.ID,
-				Timestamp:   time.Now(),
-				Temperature: 0,
-				Humidity:    0,
-				CO2:         0,
-				VOC:         0,
-				PM25:        0,
-				Score:       0,
-			}
-			app.logger.Debug("No measurements found for device", "device_id", device.ID, "device_name", device.Name)
-		}
-
-		app.devices = append(app.devices, deviceWithMeasurement)
-	}
-
-	app.logger.Info("Loaded devices from database", "count", len(app.devices))
-	return nil
-}
-
 // refreshDevicesFromDatabase reloads devices and refreshes the UI
 func (app *App) refreshDevicesFromDatabase() {
 	app.logger.Debug("Starting UI refresh from database")
-	err := app.loadDevicesFromDatabase()
-	if err != nil {
-		app.logger.Error("Failed to refresh devices from database", "error", err)
-		return
-	}
 
 	app.logger.Debug("Refreshing UI components", "current_device", app.currentDeviceSerial)
 
@@ -375,7 +320,11 @@ func (app *App) onDeviceMeasurement(apiDevice api.Device, measurement *api.Measu
 	err = app.storeMeasurement(dbDevice.ID, *measurement)
 	if err != nil {
 		app.logger.Error("Failed to store measurement", "device_id", dbDevice.ID, "error", err)
+		return
 	}
+
+	// Check if this measurement is for the device shown in shell extension
+	app.updateShellExtensionIfNeeded(dbDevice.SerialNumber)
 }
 
 // stopAllDevicePolling stops polling for all devices
@@ -384,5 +333,222 @@ func (app *App) stopAllDevicePolling() {
 	devices := app.apiClient.GetDevices()
 	for _, device := range devices {
 		device.StopPolling()
+	}
+}
+
+// getDevicesWithMeasurements loads all devices with their latest measurements from the database
+func (app *App) getDevicesWithMeasurements() ([]DeviceWithMeasurement, error) {
+	var devices []models.Device
+	err := database.DB.Find(&devices).Error
+	if err != nil {
+		return nil, err
+	}
+
+	devicesWithMeasurements := make([]DeviceWithMeasurement, 0, len(devices))
+
+	for _, device := range devices {
+		// Get the latest measurement for this device
+		var measurement models.Measurement
+		err := database.DB.Where("device_id = ?", device.ID).
+			Order("timestamp DESC").
+			First(&measurement).Error
+
+		deviceWithMeasurement := DeviceWithMeasurement{
+			Device: device,
+		}
+
+		if err == nil {
+			// Found measurement
+			deviceWithMeasurement.Measurement = measurement
+		} else {
+			// No measurement found, create a placeholder
+			deviceWithMeasurement.Measurement = models.Measurement{
+				DeviceID:    device.ID,
+				Timestamp:   time.Now(),
+				Temperature: 0,
+				Humidity:    0,
+				CO2:         0,
+				VOC:         0,
+				PM25:        0,
+				Score:       0,
+			}
+		}
+
+		devicesWithMeasurements = append(devicesWithMeasurements, deviceWithMeasurement)
+	}
+
+	return devicesWithMeasurements, nil
+}
+
+// getSelectedDeviceForShellExtension returns the device that should be displayed in the shell extension
+func (app *App) getSelectedDeviceForShellExtension() (*DeviceWithMeasurement, error) {
+	devices, err := app.getDevicesWithMeasurements()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(devices) == 0 {
+		return nil, nil
+	}
+
+	// If a device is configured in settings, use that one
+	if settings.StatusBarDeviceSerialNumber != nil {
+		for i := range devices {
+			if devices[i].Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
+				return &devices[i], nil
+			}
+		}
+		app.logger.Debug("Configured device not found, falling back to first device", "configured_serial", *settings.StatusBarDeviceSerialNumber)
+	}
+
+	// Fall back to first device
+	return &devices[0], nil
+}
+
+// updateShellExtensionIfNeeded updates the shell extension if the measurement is for the selected device
+func (app *App) updateShellExtensionIfNeeded(deviceSerial string) {
+	selectedDevice, err := app.getSelectedDeviceForShellExtension()
+	if err != nil {
+		app.logger.Error("Failed to get selected device for shell extension", "error", err)
+		return
+	}
+
+	if selectedDevice == nil {
+		app.logger.Debug("No device available for shell extension")
+		return
+	}
+
+	// Check if this measurement is for the selected device
+	if selectedDevice.Device.SerialNumber == deviceSerial {
+		app.logger.Debug("Updating shell extension with new measurement", "device_serial", deviceSerial)
+
+		// Trigger DBus signal to update shell extension
+		if app.dbusService != nil {
+			app.dbusService.EmitDeviceUpdated()
+		}
+	}
+}
+
+// setupDeviceDropdown creates and configures the device selection dropdown
+func (app *App) setupDeviceDropdown(deviceRow *adw.ActionRow) {
+	// Create string list model for the dropdown
+	stringList := gtk.NewStringList(nil)
+	
+	// Create dropdown
+	dropdown := gtk.NewDropDown(stringList, nil)
+	dropdown.SetHExpand(false)
+	dropdown.SetVAlign(gtk.AlignCenter)
+	
+	// Add dropdown to the row
+	deviceRow.AddSuffix(dropdown)
+	
+	// Load devices and populate dropdown
+	app.refreshDeviceDropdown(dropdown, stringList)
+	
+	// Connect to selection changes
+	dropdown.Connect("notify::selected", func() {
+		selectedIndex := dropdown.Selected()
+		app.onDeviceSelectionChanged(uint32(selectedIndex), stringList)
+	})
+}
+
+// refreshDeviceDropdown refreshes the device dropdown with current devices
+func (app *App) refreshDeviceDropdown(dropdown *gtk.DropDown, stringList *gtk.StringList) {
+	// Clear existing items
+	stringList.Splice(0, stringList.NItems(), nil)
+	
+	// Add "No device selected" option
+	stringList.Append("No device selected")
+	
+	// Load devices from database
+	devices, err := app.getDevicesWithMeasurements()
+	if err != nil {
+		app.logger.Error("Failed to load devices for dropdown", "error", err)
+		return
+	}
+	
+	// Add devices to dropdown
+	selectedIndex := uint32(0) // Default to "No device selected"
+	for i, deviceData := range devices {
+		displayName := deviceData.Device.Name
+		if displayName == "" {
+			displayName = deviceData.Device.SerialNumber
+		}
+		stringList.Append(displayName)
+		
+		// Check if this device is currently selected in settings
+		if settings.StatusBarDeviceSerialNumber != nil && 
+		   deviceData.Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
+			selectedIndex = uint32(i + 1) // +1 because of "No device selected" option
+		}
+	}
+	
+	// Set the current selection
+	dropdown.SetSelected(uint(selectedIndex))
+}
+
+// onDeviceSelectionChanged handles device selection changes in the dropdown
+func (app *App) onDeviceSelectionChanged(selectedIndex uint32, stringList *gtk.StringList) {
+	if selectedIndex == 0 {
+		// "No device selected" option chosen
+		settings.StatusBarDeviceSerialNumber = nil
+	} else {
+		// Get devices to find the selected one
+		devices, err := app.getDevicesWithMeasurements()
+		if err != nil {
+			app.logger.Error("Failed to get devices for selection", "error", err)
+			return
+		}
+		
+		deviceIndex := int(selectedIndex - 1) // -1 because of "No device selected" option
+		if deviceIndex >= 0 && deviceIndex < len(devices) {
+			selectedSerial := devices[deviceIndex].Device.SerialNumber
+			settings.StatusBarDeviceSerialNumber = &selectedSerial
+			app.logger.Info("Device selected for status bar", "device_serial", selectedSerial)
+		}
+	}
+	
+	// Save settings
+	err := settings.Save()
+	if err != nil {
+		app.logger.Error("Failed to save settings", "error", err)
+		return
+	}
+	
+	// Update shell extension with new selection
+	if app.dbusService != nil {
+		app.dbusService.EmitDeviceUpdated()
+	}
+}
+
+// setupVisibilityToggle configures the shell extension visibility toggle
+func (app *App) setupVisibilityToggle(visibilitySwitch *gtk.Switch) {
+	// Set initial state based on settings
+	visibilitySwitch.SetActive(settings.ShowShellExtension)
+	
+	// Connect to state changes
+	visibilitySwitch.Connect("state-set", func(state bool) bool {
+		app.onVisibilityToggleChanged(state)
+		return false // Allow the state change to proceed
+	})
+}
+
+// onVisibilityToggleChanged handles changes to the shell extension visibility setting
+func (app *App) onVisibilityToggleChanged(visible bool) {
+	app.logger.Info("Shell extension visibility changed", "visible", visible)
+	
+	// Update settings
+	settings.ShowShellExtension = visible
+	
+	// Save settings
+	err := settings.Save()
+	if err != nil {
+		app.logger.Error("Failed to save visibility setting", "error", err)
+		return
+	}
+	
+	// Update shell extension
+	if app.dbusService != nil {
+		app.dbusService.EmitVisibilityChanged()
 	}
 }
