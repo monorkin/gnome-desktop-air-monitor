@@ -33,6 +33,7 @@ type App struct {
 	logger              *slog.Logger
 	indexListBox        *gtk.ListBox
 	currentDeviceSerial string // Serial number of currently shown device, empty if none
+	isEditingDeviceName bool   // Flag to prevent UI refresh while editing device name
 }
 
 type DeviceWithMeasurement struct {
@@ -235,6 +236,12 @@ func (app *App) storeDevice(device models.Device) error {
 
 // refreshDevicesFromDatabase reloads devices and refreshes the UI
 func (app *App) refreshDevicesFromDatabase() {
+	// Don't refresh if user is editing device name
+	if app.isEditingDeviceName {
+		app.logger.Debug("Skipping UI refresh - device name editing in progress")
+		return
+	}
+
 	app.logger.Debug("Starting UI refresh from database")
 
 	app.logger.Debug("Refreshing UI components", "current_device", app.currentDeviceSerial)
