@@ -6,6 +6,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 )
 
 const (
@@ -162,7 +163,7 @@ func (s *DBusService) Quit() *dbus.Error {
 
 // GetVisibility returns the current shell extension visibility setting
 func (s *DBusService) GetVisibility() (bool, *dbus.Error) {
-	return settings.ShowShellExtension, nil
+	return globals.Settings.ShowShellExtension, nil
 }
 
 // EmitDeviceUpdated sends a device update signal
@@ -194,7 +195,7 @@ func (s *DBusService) EmitDeviceUpdated() error {
 // EmitVisibilityChanged sends a visibility change signal
 func (s *DBusService) EmitVisibilityChanged() error {
 	// Get visibility setting from the app's settings
-	visible := settings.ShowShellExtension
+	visible := globals.Settings.ShowShellExtension
 	
 	s.app.logger.Debug("Emitting visibility changed signal", "visible", visible)
 	

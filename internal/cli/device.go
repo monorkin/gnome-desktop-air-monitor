@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/models"
 )
 
@@ -27,15 +28,12 @@ var deviceListCmd = &cobra.Command{
 }
 
 func runDeviceList(cmd *cobra.Command, args []string) {
-	setupLogger()
-	initializeApp()
-	
-	logger.Debug("Fetching devices from database")
+	globals.Logger.Debug("Fetching devices from database")
 	
 	var devices []models.Device
 	err := database.DB.Find(&devices).Error
 	if err != nil {
-		logger.Error("Failed to fetch devices", "error", err)
+		globals.Logger.Error("Failed to fetch devices", "error", err)
 		fmt.Fprintf(os.Stderr, "Error: Failed to fetch devices: %v\n", err)
 		os.Exit(1)
 	}
@@ -64,7 +62,7 @@ func runDeviceList(cmd *cobra.Command, args []string) {
 		)
 	}
 	
-	logger.Debug("Device list completed", "count", len(devices))
+	globals.Logger.Debug("Device list completed", "count", len(devices))
 }
 
 func init() {

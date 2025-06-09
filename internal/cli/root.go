@@ -1,19 +1,14 @@
 package cli
 
 import (
-	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/app"
-	"github.com/monorkin/gnome-desktop-air-monitor/internal/config"
-	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 )
 
-var (
-	verbose bool
-	logger  *slog.Logger
-)
+var verbose bool
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -24,11 +19,12 @@ var rootCmd = &cobra.Command{
 The application discovers Awair devices on your network, collects air quality measurements,
 and displays them in a user-friendly interface. It also provides a GNOME shell extension
 indicator for quick access to air quality information.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Initialize globals before any command runs
+		globals.Initialize(verbose)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Default behavior: start the GUI application
-		setupLogger()
-		initializeApp()
-		
 		app := app.NewApp()
 		os.Exit(app.Run())
 	},
@@ -42,31 +38,4 @@ func Execute() error {
 func init() {
 	// Global flags
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose (debug) logging")
-}
-
-// setupLogger configures the logger based on the verbose flag
-func setupLogger() {
-	level := slog.LevelInfo
-	if verbose {
-		level = slog.LevelDebug
-	}
-	
-	logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	}))
-	
-	// Set as default logger
-	slog.SetDefault(logger)
-}
-
-// initializeApp initializes the database and settings for CLI commands
-func initializeApp() {
-	// Load settings
-	newSettings, settingsLoaded := config.LoadOrInitializeSettingsFromDefaultLocation()
-	if newSettings {
-		settingsLoaded.Save()
-	}
-	
-	// Initialize database
-	database.Init()
 }

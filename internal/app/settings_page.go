@@ -7,6 +7,7 @@ import (
 	glib "github.com/diamondburned/gotk4/pkg/glib/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 )
 
 // SettingsPageState holds all state related to the settings page
@@ -77,10 +78,10 @@ func (sp *SettingsPageState) setup(app *App) {
 	retentionRow.SetSubtitle("Number of days to keep measurement data")
 
 	// Create spin button for retention period
-	retentionAdjustment := gtk.NewAdjustment(float64(settings.DataRetentionPeriod), 1, 365, 1, 7, 0)
+	retentionAdjustment := gtk.NewAdjustment(float64(globals.Settings.DataRetentionPeriod), 1, 365, 1, 7, 0)
 	sp.retentionSpinButton = gtk.NewSpinButton(retentionAdjustment, 1, 0)
 	sp.retentionSpinButton.SetVAlign(gtk.AlignCenter)
-	sp.retentionSpinButton.SetValue(float64(settings.DataRetentionPeriod))
+	sp.retentionSpinButton.SetValue(float64(globals.Settings.DataRetentionPeriod))
 
 	// Connect to value changes
 	sp.retentionSpinButton.ConnectValueChanged(func() {
@@ -191,8 +192,8 @@ func (sp *SettingsPageState) refreshDropdown(app *App, stringList *gtk.StringLis
 		stringList.Append(displayName)
 
 		// Check if this device is currently selected in settings
-		if settings.StatusBarDeviceSerialNumber != nil &&
-			deviceData.Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
+		if globals.Settings.StatusBarDeviceSerialNumber != nil &&
+			deviceData.Device.SerialNumber == *globals.Settings.StatusBarDeviceSerialNumber {
 			selectedIndex = uint32(i + 1) // +1 because of "No device selected" option
 		}
 	}
@@ -205,7 +206,7 @@ func (sp *SettingsPageState) refreshDropdown(app *App, stringList *gtk.StringLis
 func (sp *SettingsPageState) onSelectionChanged(app *App, selectedIndex uint32, stringList *gtk.StringList) {
 	if selectedIndex == 0 {
 		// "No device selected" option chosen
-		settings.StatusBarDeviceSerialNumber = nil
+		globals.Settings.StatusBarDeviceSerialNumber = nil
 	} else {
 		// Get devices to find the selected one
 		devices, err := app.getDevicesWithMeasurements()
@@ -217,13 +218,13 @@ func (sp *SettingsPageState) onSelectionChanged(app *App, selectedIndex uint32, 
 		deviceIndex := int(selectedIndex - 1) // -1 because of "No device selected" option
 		if deviceIndex >= 0 && deviceIndex < len(devices) {
 			selectedSerial := devices[deviceIndex].Device.SerialNumber
-			settings.StatusBarDeviceSerialNumber = &selectedSerial
+			globals.Settings.StatusBarDeviceSerialNumber = &selectedSerial
 			app.logger.Info("Device selected for status bar", "device_serial", selectedSerial)
 		}
 	}
 
 	// Save settings
-	err := settings.Save()
+	err := globals.Settings.Save()
 	if err != nil {
 		app.logger.Error("Failed to save settings", "error", err)
 		return
@@ -238,7 +239,7 @@ func (sp *SettingsPageState) onSelectionChanged(app *App, selectedIndex uint32, 
 // setupVisibilityToggle configures the shell extension visibility toggle
 func (sp *SettingsPageState) setupToggle(app *App) {
 	// Set initial state based on settings
-	sp.visibilitySwitch.SetActive(settings.ShowShellExtension)
+	sp.visibilitySwitch.SetActive(globals.Settings.ShowShellExtension)
 
 	// Connect to state changes
 	sp.visibilitySwitch.Connect("state-set", func(state bool) bool {
@@ -252,10 +253,10 @@ func (sp *SettingsPageState) onToggleChanged(app *App, visible bool) {
 	app.logger.Info("Shell extension visibility changed", "visible", visible)
 
 	// Update settings
-	settings.ShowShellExtension = visible
+	globals.Settings.ShowShellExtension = visible
 
 	// Save settings
-	err := settings.Save()
+	err := globals.Settings.Save()
 	if err != nil {
 		app.logger.Error("Failed to save visibility setting", "error", err)
 		return
@@ -269,13 +270,13 @@ func (sp *SettingsPageState) onToggleChanged(app *App, visible bool) {
 
 // onRetentionPeriodChanged handles changes to the data retention period setting
 func (sp *SettingsPageState) onRetentionChanged(app *App, days int) {
-	app.logger.Info("Data retention period changed", "new_days", days, "old_days", settings.DataRetentionPeriod)
+	app.logger.Info("Data retention period changed", "new_days", days, "old_days", globals.Settings.DataRetentionPeriod)
 
 	// Update settings
-	settings.DataRetentionPeriod = days
+	globals.Settings.DataRetentionPeriod = days
 
 	// Save settings
-	err := settings.Save()
+	err := globals.Settings.Save()
 	if err != nil {
 		app.logger.Error("Failed to save retention period setting", "error", err)
 		return

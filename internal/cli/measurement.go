@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/models"
 )
 
@@ -32,11 +33,8 @@ Examples:
 }
 
 func runMeasurementGet(cmd *cobra.Command, args []string) {
-	setupLogger()
-	initializeApp()
-	
 	deviceIdentifier := args[0]
-	logger.Debug("Getting measurement for device", "identifier", deviceIdentifier)
+	globals.Logger.Debug("Getting measurement for device", "identifier", deviceIdentifier)
 	
 	// First try to find device by ID, then by serial number
 	var device models.Device
@@ -51,12 +49,12 @@ func runMeasurementGet(cmd *cobra.Command, args []string) {
 	}
 	
 	if err != nil {
-		logger.Error("Device not found", "identifier", deviceIdentifier, "error", err)
+		globals.Logger.Error("Device not found", "identifier", deviceIdentifier, "error", err)
 		fmt.Fprintf(os.Stderr, "Error: Device not found: %s\n", deviceIdentifier)
 		os.Exit(1)
 	}
 	
-	logger.Debug("Found device", "id", device.ID, "name", device.Name, "serial", device.SerialNumber)
+	globals.Logger.Debug("Found device", "id", device.ID, "name", device.Name, "serial", device.SerialNumber)
 	
 	// Get the latest measurement for this device
 	var measurement models.Measurement
@@ -65,7 +63,7 @@ func runMeasurementGet(cmd *cobra.Command, args []string) {
 		First(&measurement).Error
 		
 	if err != nil {
-		logger.Error("No measurements found for device", "device_id", device.ID, "error", err)
+		globals.Logger.Error("No measurements found for device", "device_id", device.ID, "error", err)
 		fmt.Fprintf(os.Stderr, "Error: No measurements found for device %s\n", deviceIdentifier)
 		os.Exit(1)
 	}
@@ -97,14 +95,14 @@ func runMeasurementGet(cmd *cobra.Command, args []string) {
 	// Output as JSON
 	output, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		logger.Error("Failed to marshal response", "error", err)
+		globals.Logger.Error("Failed to marshal response", "error", err)
 		fmt.Fprintf(os.Stderr, "Error: Failed to format response: %v\n", err)
 		os.Exit(1)
 	}
 	
 	fmt.Println(string(output))
 	
-	logger.Debug("Measurement get completed", "device_id", device.ID)
+	globals.Logger.Debug("Measurement get completed", "device_id", device.ID)
 }
 
 // DeviceInfo represents device information for JSON output

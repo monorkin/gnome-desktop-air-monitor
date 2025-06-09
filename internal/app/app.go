@@ -2,7 +2,6 @@ package app
 
 import (
 	"log/slog"
-	"os"
 	"time"
 
 	adw "github.com/diamondburned/gotk4-adwaita/pkg/adw"
@@ -10,8 +9,8 @@ import (
 	glib "github.com/diamondburned/gotk4/pkg/glib/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 	api "github.com/monorkin/gnome-desktop-air-monitor/awair/api"
-	"github.com/monorkin/gnome-desktop-air-monitor/internal/config"
 	database "github.com/monorkin/gnome-desktop-air-monitor/internal/database"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/models"
 )
 
@@ -19,7 +18,6 @@ const (
 	APP_IDENTIFIER = "io.stanko.gnome-desktop-air-monitor"
 )
 
-var settings *config.Settings
 
 type App struct {
 	*gtk.Application
@@ -45,18 +43,8 @@ type DeviceWithMeasurement struct {
 
 
 func NewApp() *App {
-	newSettings, settingsLoaded := config.LoadOrInitializeSettingsFromDefaultLocation()
-	settings = settingsLoaded
-	if newSettings {
-		settings.Save()
-	}
-
-	database.Init()
-
-	// Create logger
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
+	// Ensure globals are initialized
+	globals.MustBeInitialized()
 
 	application := gtk.NewApplication(
 		APP_IDENTIFIER,
@@ -65,8 +53,8 @@ func NewApp() *App {
 
 	app := &App{
 		Application:  application,
-		apiClient:    api.NewClientWithLogger(logger),
-		logger:       logger,
+		apiClient:    api.NewClientWithLogger(globals.Logger),
+		logger:       globals.Logger,
 		devicePage:   &DevicePageState{},   // Initialize device page state
 		indexPage:    &IndexPageState{},    // Initialize index page state
 		settingsPage: &SettingsPageState{}, // Initialize settings page state
@@ -411,13 +399,13 @@ func (app *App) getSelectedDeviceForShellExtension() (*DeviceWithMeasurement, er
 	}
 
 	// If a device is configured in settings, use that one
-	if settings.StatusBarDeviceSerialNumber != nil {
+	if globals.Settings.StatusBarDeviceSerialNumber != nil {
 		for i := range devices {
-			if devices[i].Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
+			if devices[i].Device.SerialNumber == *globals.Settings.StatusBarDeviceSerialNumber {
 				return &devices[i], nil
 			}
 		}
-		app.logger.Debug("Configured device not found, falling back to first device", "configured_serial", *settings.StatusBarDeviceSerialNumber)
+		app.logger.Debug("Configured device not found, falling back to first device", "configured_serial", *globals.Settings.StatusBarDeviceSerialNumber)
 	}
 
 	// Fall back to first device
@@ -476,15 +464,15 @@ func (app *App) stopDataCleanup() {
 
 // cleanupOldMeasurements removes measurements older than the retention period
 func (app *App) cleanupOldMeasurements() {
-	if settings.DataRetentionPeriod <= 0 {
+	if globals.Settings.DataRetentionPeriod <= 0 {
 		app.logger.Debug("Data retention disabled (period <= 0)")
 		return
 	}
 
-	cutoffTime := time.Now().AddDate(0, 0, -settings.DataRetentionPeriod)
+	cutoffTime := time.Now().AddDate(0, 0, -globals.Settings.DataRetentionPeriod)
 
 	app.logger.Debug("Cleaning up old measurements",
-		"retention_days", settings.DataRetentionPeriod,
+		"retention_days", globals.Settings.DataRetentionPeriod,
 		"cutoff_time", cutoffTime.Format("2006-01-02 15:04:05"))
 
 	result := database.DB.Where("timestamp < ?", cutoffTime).Delete(&models.Measurement{})
