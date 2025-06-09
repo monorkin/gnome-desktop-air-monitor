@@ -69,11 +69,11 @@ build-debug: deps
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 go build -gcflags="all=-N -l" -o $(BUILD_DIR)/$(BINARY_NAME)-debug $(MAIN_PATH)
 
-## dev: Build and run the application
+## dev: Build and run the application (pass args with ARGS="...")
 dev: build-debug
 	@$(MAKE) install-extension
 	@echo "Running $(BINARY_NAME)..."
-	$(BUILD_DIR)/$(BINARY_NAME)-debug
+	$(BUILD_DIR)/$(BINARY_NAME)-debug $(ARGS)
 
 ## clean: Remove build artifacts
 clean:

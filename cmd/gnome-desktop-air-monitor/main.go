@@ -3,10 +3,11 @@ package main
 import (
 	"os"
 
-	"github.com/monorkin/gnome-desktop-air-monitor/internal/app"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/cli"
 )
 
 func main() {
-	app := app.NewApp()
-	os.Exit(app.Run())
+	if err := cli.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
