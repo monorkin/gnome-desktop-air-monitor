@@ -113,13 +113,13 @@ func (app *App) onActivate() {
 	app.backButton = gtk.NewButtonFromIconName("go-previous-symbolic")
 	app.backButton.SetVisible(false)
 	app.backButton.ConnectClicked(func() {
-		app.indexPage.showIndexPage(app)
+		app.indexPage.show(app)
 	})
 	app.headerBar.PackStart(app.backButton)
 
 	app.settingsButton = gtk.NewButtonFromIconName("preferences-system-symbolic")
 	app.settingsButton.ConnectClicked(func() {
-		app.settingsPage.showSettingsPage(app)
+		app.settingsPage.show(app)
 	})
 	app.headerBar.PackEnd(app.settingsButton)
 
@@ -129,8 +129,8 @@ func (app *App) onActivate() {
 	app.stack.SetTransitionType(gtk.StackTransitionTypeSlideLeftRight)
 	mainBox.Append(app.stack)
 
-	app.indexPage.setupIndexPage(app)
-	app.settingsPage.setupSettingsPage(app)
+	app.indexPage.setup(app)
+	app.settingsPage.setup(app)
 	app.mainWindow.SetContent(mainBox)
 	app.mainWindow.Present()
 
@@ -259,10 +259,10 @@ func (app *App) refreshDevicesFromDatabase() {
 	app.logger.Debug("Refreshing UI components", "current_device", app.devicePage.currentDeviceSerial)
 
 	// Refresh the index page if it exists
-	app.indexPage.refreshIndexPage(app)
+	app.indexPage.refresh(app)
 
 	// Refresh the current device page if one is shown
-	app.devicePage.refreshCurrentDevicePage(app)
+	app.devicePage.refresh(app)
 
 	app.logger.Debug("UI refresh completed")
 }

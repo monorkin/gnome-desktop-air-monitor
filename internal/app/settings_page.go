@@ -19,7 +19,7 @@ type SettingsPageState struct {
 
 
 // SettingsPageState methods
-func (sp *SettingsPageState) setupSettingsPage(app *App) {
+func (sp *SettingsPageState) setup(app *App) {
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
 	scrolled.SetVExpand(true)
@@ -51,7 +51,7 @@ func (sp *SettingsPageState) setupSettingsPage(app *App) {
 	visibilityRow.SetActivatableWidget(sp.visibilitySwitch)
 
 	// Set initial state and connect to changes
-	sp.setupVisibilityToggle(app)
+	sp.setupToggle(app)
 
 	shellGroup.Add(visibilityRow)
 
@@ -61,7 +61,7 @@ func (sp *SettingsPageState) setupSettingsPage(app *App) {
 	deviceRow.SetSubtitle("Choose which device to display in the shell extension")
 
 	// Create dropdown for device selection
-	sp.setupDeviceDropdown(app, deviceRow)
+	sp.setupDropdown(app, deviceRow)
 
 	shellGroup.Add(deviceRow)
 	contentBox.Append(shellGroup)
@@ -84,7 +84,7 @@ func (sp *SettingsPageState) setupSettingsPage(app *App) {
 
 	// Connect to value changes
 	sp.retentionSpinButton.ConnectValueChanged(func() {
-		sp.onRetentionPeriodChanged(app, int(sp.retentionSpinButton.Value()))
+		sp.onRetentionChanged(app, int(sp.retentionSpinButton.Value()))
 	})
 
 	// Add suffix label for "days"
@@ -134,7 +134,7 @@ func (sp *SettingsPageState) setupSettingsPage(app *App) {
 	app.stack.AddNamed(scrolled, "settings")
 }
 
-func (sp *SettingsPageState) showSettingsPage(app *App) {
+func (sp *SettingsPageState) show(app *App) {
 	app.stack.SetVisibleChildName("settings")
 	app.mainWindow.SetTitle("Settings")
 	app.backButton.SetVisible(true)
@@ -144,7 +144,7 @@ func (sp *SettingsPageState) showSettingsPage(app *App) {
 }
 
 // setupDeviceDropdown creates and configures the device selection dropdown
-func (sp *SettingsPageState) setupDeviceDropdown(app *App, deviceRow *adw.ActionRow) {
+func (sp *SettingsPageState) setupDropdown(app *App, deviceRow *adw.ActionRow) {
 	// Create string list model for the dropdown
 	stringList := gtk.NewStringList(nil)
 
@@ -157,17 +157,17 @@ func (sp *SettingsPageState) setupDeviceDropdown(app *App, deviceRow *adw.Action
 	deviceRow.AddSuffix(sp.deviceDropdown)
 
 	// Load devices and populate dropdown
-	sp.refreshDeviceDropdown(app, stringList)
+	sp.refreshDropdown(app, stringList)
 
 	// Connect to selection changes
 	sp.deviceDropdown.Connect("notify::selected", func() {
 		selectedIndex := sp.deviceDropdown.Selected()
-		sp.onDeviceSelectionChanged(app, uint32(selectedIndex), stringList)
+		sp.onSelectionChanged(app, uint32(selectedIndex), stringList)
 	})
 }
 
 // refreshDeviceDropdown refreshes the device dropdown with current devices
-func (sp *SettingsPageState) refreshDeviceDropdown(app *App, stringList *gtk.StringList) {
+func (sp *SettingsPageState) refreshDropdown(app *App, stringList *gtk.StringList) {
 	// Clear existing items
 	stringList.Splice(0, stringList.NItems(), nil)
 
@@ -202,7 +202,7 @@ func (sp *SettingsPageState) refreshDeviceDropdown(app *App, stringList *gtk.Str
 }
 
 // onDeviceSelectionChanged handles device selection changes in the dropdown
-func (sp *SettingsPageState) onDeviceSelectionChanged(app *App, selectedIndex uint32, stringList *gtk.StringList) {
+func (sp *SettingsPageState) onSelectionChanged(app *App, selectedIndex uint32, stringList *gtk.StringList) {
 	if selectedIndex == 0 {
 		// "No device selected" option chosen
 		settings.StatusBarDeviceSerialNumber = nil
@@ -236,19 +236,19 @@ func (sp *SettingsPageState) onDeviceSelectionChanged(app *App, selectedIndex ui
 }
 
 // setupVisibilityToggle configures the shell extension visibility toggle
-func (sp *SettingsPageState) setupVisibilityToggle(app *App) {
+func (sp *SettingsPageState) setupToggle(app *App) {
 	// Set initial state based on settings
 	sp.visibilitySwitch.SetActive(settings.ShowShellExtension)
 
 	// Connect to state changes
 	sp.visibilitySwitch.Connect("state-set", func(state bool) bool {
-		sp.onVisibilityToggleChanged(app, state)
+		sp.onToggleChanged(app, state)
 		return false // Allow the state change to proceed
 	})
 }
 
 // onVisibilityToggleChanged handles changes to the shell extension visibility setting
-func (sp *SettingsPageState) onVisibilityToggleChanged(app *App, visible bool) {
+func (sp *SettingsPageState) onToggleChanged(app *App, visible bool) {
 	app.logger.Info("Shell extension visibility changed", "visible", visible)
 
 	// Update settings
@@ -268,7 +268,7 @@ func (sp *SettingsPageState) onVisibilityToggleChanged(app *App, visible bool) {
 }
 
 // onRetentionPeriodChanged handles changes to the data retention period setting
-func (sp *SettingsPageState) onRetentionPeriodChanged(app *App, days int) {
+func (sp *SettingsPageState) onRetentionChanged(app *App, days int) {
 	app.logger.Info("Data retention period changed", "new_days", days, "old_days", settings.DataRetentionPeriod)
 
 	// Update settings

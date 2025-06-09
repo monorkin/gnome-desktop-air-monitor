@@ -53,11 +53,11 @@ type DevicePageState struct {
 
 
 // showDevicePage displays the device detail page
-func (dp *DevicePageState) showDevicePage(app *App, deviceIndex int) {
+func (dp *DevicePageState) show(app *App, deviceIndex int) {
 	// Fetch devices from database
 	devices, err := app.getDevicesWithMeasurements()
 	if err != nil || deviceIndex >= len(devices) {
-		app.indexPage.showIndexPage(app)
+		app.indexPage.show(app)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (dp *DevicePageState) showDevicePage(app *App, deviceIndex int) {
 	headerTextBox.SetVAlign(gtk.AlignCenter)
 
 	// Create clickable device name with inline editing
-	dp.setupEditableDeviceName(app, headerTextBox, &deviceData, deviceIndex)
+	dp.setupEditableName(app, headerTextBox, &deviceData, deviceIndex)
 
 	scoreLabel := gtk.NewLabel(fmt.Sprintf("Air Quality Score: %.0f", deviceData.Measurement.Score))
 	scoreLabel.AddCSSClass("subtitle")
@@ -152,7 +152,7 @@ func (dp *DevicePageState) showDevicePage(app *App, deviceIndex int) {
 	contentBox.Append(metricsGroup)
 
 	// Add 24-hour graph with navigation
-	dp.addMeasurementGraph(app, contentBox, &deviceData)
+	dp.addGraph(app, contentBox, &deviceData)
 
 	deviceInfoGroup := adw.NewPreferencesGroup()
 	deviceInfoGroup.SetTitle("Device Information")
@@ -207,7 +207,7 @@ func (dp *DevicePageState) showDevicePage(app *App, deviceIndex int) {
 }
 
 // refreshCurrentDevicePage refreshes the currently shown device page if one is displayed
-func (dp *DevicePageState) refreshCurrentDevicePage(app *App) {
+func (dp *DevicePageState) refresh(app *App) {
 	if dp.currentDeviceSerial == "" {
 		return // No device page is currently shown
 	}
@@ -215,7 +215,7 @@ func (dp *DevicePageState) refreshCurrentDevicePage(app *App) {
 	// Fetch devices from database
 	devices, err := app.getDevicesWithMeasurements()
 	if err != nil {
-		app.indexPage.showIndexPage(app)
+		app.indexPage.show(app)
 		return
 	}
 
@@ -223,13 +223,13 @@ func (dp *DevicePageState) refreshCurrentDevicePage(app *App) {
 	for i, deviceData := range devices {
 		if deviceData.Device.SerialNumber == dp.currentDeviceSerial {
 			// Re-show the device page with updated data
-			dp.showDevicePage(app, i)
+			dp.show(app, i)
 			return
 		}
 	}
 
 	// Device not found (might have been removed), go back to index
-	app.indexPage.showIndexPage(app)
+	app.indexPage.show(app)
 }
 
 // clearState clears the device page state when leaving the page
@@ -241,7 +241,7 @@ func (dp *DevicePageState) clearState() {
 }
 
 // setupEditableDeviceName creates an editable device name widget
-func (dp *DevicePageState) setupEditableDeviceName(app *App, container *gtk.Box, deviceData *DeviceWithMeasurement, deviceIndex int) {
+func (dp *DevicePageState) setupEditableName(app *App, container *gtk.Box, deviceData *DeviceWithMeasurement, deviceIndex int) {
 	// Create a stack to switch between label and entry
 	nameStack := gtk.NewStack()
 	nameStack.SetTransitionType(gtk.StackTransitionTypeSlideUpDown)
@@ -290,7 +290,7 @@ func (dp *DevicePageState) setupEditableDeviceName(app *App, container *gtk.Box,
 	saveButton.ConnectClicked(func() {
 		newName := nameEntry.Text()
 		if newName != "" && newName != deviceData.Device.Name {
-			dp.updateDeviceName(app, deviceData.Device.ID, newName, deviceIndex)
+			dp.updateName(app, deviceData.Device.ID, newName, deviceIndex)
 		} else {
 			// Cancel edit - switch back to view
 			dp.isEditingDeviceName = false
@@ -332,7 +332,7 @@ func (dp *DevicePageState) setupEditableDeviceName(app *App, container *gtk.Box,
 }
 
 // updateDeviceName updates the device name in the database
-func (dp *DevicePageState) updateDeviceName(app *App, deviceID uint, newName string, deviceIndex int) {
+func (dp *DevicePageState) updateName(app *App, deviceID uint, newName string, deviceIndex int) {
 	app.logger.Info("Updating device name", "device_id", deviceID, "new_name", newName)
 
 	// Update device name in database
@@ -376,7 +376,7 @@ func getMetricInfo() map[MetricType]MetricInfo {
 }
 
 // addMeasurementGraph creates and adds the measurement graph widget
-func (dp *DevicePageState) addMeasurementGraph(app *App, container *gtk.Box, deviceData *DeviceWithMeasurement) {
+func (dp *DevicePageState) addGraph(app *App, container *gtk.Box, deviceData *DeviceWithMeasurement) {
 	graphGroup := adw.NewPreferencesGroup()
 	graphGroup.SetTitle("Measurement Trends")
 

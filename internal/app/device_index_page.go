@@ -13,7 +13,7 @@ type IndexPageState struct {
 
 
 // IndexPageState methods
-func (ip *IndexPageState) setupIndexPage(app *App) {
+func (ip *IndexPageState) setup(app *App) {
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
 	scrolled.SetVExpand(true)
@@ -26,14 +26,14 @@ func (ip *IndexPageState) setupIndexPage(app *App) {
 	ip.listBox.SetMarginStart(24)
 	ip.listBox.SetMarginEnd(24)
 
-	ip.populateIndexPage(app)
+	ip.populate(app)
 
 	scrolled.SetChild(ip.listBox)
 	app.stack.AddNamed(scrolled, "index")
 	app.stack.SetVisibleChildName("index")
 }
 
-func (ip *IndexPageState) populateIndexPage(app *App) {
+func (ip *IndexPageState) populate(app *App) {
 	// Clear existing rows
 	for ip.listBox.FirstChild() != nil {
 		ip.listBox.Remove(ip.listBox.FirstChild())
@@ -99,13 +99,13 @@ func (ip *IndexPageState) populateIndexPage(app *App) {
 	}
 }
 
-func (ip *IndexPageState) refreshIndexPage(app *App) {
+func (ip *IndexPageState) refresh(app *App) {
 	if ip.listBox != nil {
-		ip.populateIndexPage(app)
+		ip.populate(app)
 	}
 }
 
-func (ip *IndexPageState) showIndexPage(app *App) {
+func (ip *IndexPageState) show(app *App) {
 	app.stack.SetVisibleChildName("index")
 	app.mainWindow.SetTitle("Air Monitor")
 	app.backButton.SetVisible(false)
@@ -150,7 +150,7 @@ func (ip *IndexPageState) createDeviceRow(app *App, deviceData DeviceWithMeasure
 
 	gesture := gtk.NewGestureClick()
 	gesture.ConnectPressed(func(nPress int, x, y float64) {
-		app.devicePage.showDevicePage(app, index)
+		app.devicePage.show(app, index)
 	})
 	row.AddController(gesture)
 
