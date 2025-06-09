@@ -37,6 +37,7 @@ type App struct {
 	currentGraphState   *GraphState // State of the current device graph
 	currentScrollPosition float64 // Scroll position of current device page
 	currentDeviceScrolled *gtk.ScrolledWindow // Reused scrolled window to maintain scroll position
+	cleanupTicker     *time.Ticker // Ticker for periodic data cleanup
 }
 
 type DeviceWithMeasurement struct {
@@ -161,6 +162,9 @@ func (app *App) onActivate() {
 
 	app.apiClient.SetOnDeviceDiscovered(app.onDeviceDiscovered)
 	app.apiClient.StartDeviceDiscovery()
+
+	// Start periodic data cleanup
+	app.startDataCleanup()
 }
 
 func (app *App) Run() int {
@@ -170,6 +174,9 @@ func (app *App) Run() int {
 func (app *App) Quit() {
 	// Stop device polling
 	app.stopAllDevicePolling()
+
+	// Stop data cleanup
+	app.stopDataCleanup()
 
 	// Close DBUS service
 	if app.dbusService != nil {
@@ -467,6 +474,60 @@ func (app *App) updateShellExtensionIfNeeded(deviceSerial string) {
 	}
 }
 
+// startDataCleanup starts the periodic data cleanup process
+func (app *App) startDataCleanup() {
+	app.logger.Info("Starting periodic data cleanup", "interval", "10 minutes")
+	
+	// Run initial cleanup
+	app.cleanupOldMeasurements()
+	
+	// Set up ticker for every 10 minutes
+	app.cleanupTicker = time.NewTicker(10 * time.Minute)
+	
+	go func() {
+		for range app.cleanupTicker.C {
+			app.cleanupOldMeasurements()
+		}
+	}()
+}
+
+// stopDataCleanup stops the periodic data cleanup
+func (app *App) stopDataCleanup() {
+	if app.cleanupTicker != nil {
+		app.logger.Info("Stopping periodic data cleanup")
+		app.cleanupTicker.Stop()
+		app.cleanupTicker = nil
+	}
+}
+
+// cleanupOldMeasurements removes measurements older than the retention period
+func (app *App) cleanupOldMeasurements() {
+	if settings.DataRetentionPeriod <= 0 {
+		app.logger.Debug("Data retention disabled (period <= 0)")
+		return
+	}
+	
+	cutoffTime := time.Now().AddDate(0, 0, -settings.DataRetentionPeriod)
+	
+	app.logger.Debug("Cleaning up old measurements", 
+		"retention_days", settings.DataRetentionPeriod,
+		"cutoff_time", cutoffTime.Format("2006-01-02 15:04:05"))
+	
+	result := database.DB.Where("timestamp < ?", cutoffTime).Delete(&models.Measurement{})
+	if result.Error != nil {
+		app.logger.Error("Failed to cleanup old measurements", "error", result.Error)
+		return
+	}
+	
+	if result.RowsAffected > 0 {
+		app.logger.Info("Cleaned up old measurements", 
+			"deleted_count", result.RowsAffected,
+			"cutoff_time", cutoffTime.Format("2006-01-02 15:04:05"))
+	} else {
+		app.logger.Debug("No old measurements to cleanup")
+	}
+}
+
 // setupDeviceDropdown creates and configures the device selection dropdown
 func (app *App) setupDeviceDropdown(deviceRow *adw.ActionRow) {
 	// Create string list model for the dropdown
@@ -589,4 +650,22 @@ func (app *App) onVisibilityToggleChanged(visible bool) {
 	if app.dbusService != nil {
 		app.dbusService.EmitVisibilityChanged()
 	}
+}
+
+// onRetentionPeriodChanged handles changes to the data retention period setting
+func (app *App) onRetentionPeriodChanged(days int) {
+	app.logger.Info("Data retention period changed", "new_days", days, "old_days", settings.DataRetentionPeriod)
+	
+	// Update settings
+	settings.DataRetentionPeriod = days
+	
+	// Save settings
+	err := settings.Save()
+	if err != nil {
+		app.logger.Error("Failed to save retention period setting", "error", err)
+		return
+	}
+	
+	// Trigger immediate cleanup with new retention period
+	app.cleanupOldMeasurements()
 }

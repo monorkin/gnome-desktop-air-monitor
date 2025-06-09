@@ -51,6 +51,40 @@ func (app *App) setupSettingsPage() {
 
 	shellGroup.Add(deviceRow)
 	contentBox.Append(shellGroup)
+
+	// Data Retention settings group
+	dataGroup := adw.NewPreferencesGroup()
+	dataGroup.SetTitle("Data Management")
+	dataGroup.SetDescription("Configure data storage and retention policies")
+
+	// Data retention period row
+	retentionRow := adw.NewActionRow()
+	retentionRow.SetTitle("Data Retention Period")
+	retentionRow.SetSubtitle("Number of days to keep measurement data")
+
+	// Create spin button for retention period
+	retentionAdjustment := gtk.NewAdjustment(float64(settings.DataRetentionPeriod), 1, 365, 1, 7, 0)
+	retentionSpinButton := gtk.NewSpinButton(retentionAdjustment, 1, 0)
+	retentionSpinButton.SetVAlign(gtk.AlignCenter)
+	retentionSpinButton.SetValue(float64(settings.DataRetentionPeriod))
+
+	// Connect to value changes
+	retentionSpinButton.ConnectValueChanged(func() {
+		app.onRetentionPeriodChanged(int(retentionSpinButton.Value()))
+	})
+
+	// Add suffix label for "days"
+	suffixBox := gtk.NewBox(gtk.OrientationHorizontal, 8)
+	suffixBox.Append(retentionSpinButton)
+	daysLabel := gtk.NewLabel("days")
+	daysLabel.AddCSSClass("dim-label")
+	daysLabel.SetVAlign(gtk.AlignCenter)
+	suffixBox.Append(daysLabel)
+
+	retentionRow.AddSuffix(suffixBox)
+	dataGroup.Add(retentionRow)
+	contentBox.Append(dataGroup)
+
 	scrolled.SetChild(contentBox)
 	app.stack.AddNamed(scrolled, "settings")
 }

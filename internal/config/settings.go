@@ -8,6 +8,7 @@ import (
 
 type Settings struct {
 	StatusBarDeviceSerialNumber *string `json:"status_bar_device_serial_number"`
+	DataRetentionPeriod         int     `json:"data_retention_period,omitempty"` // in days, optional
 	ShowShellExtension          bool    `json:"show_shell_extension"`
 }
 
@@ -26,7 +27,8 @@ func LoadOrInitializeSettings(path string) (bool, *Settings) {
 
 	return true, &Settings{
 		StatusBarDeviceSerialNumber: nil,
-		ShowShellExtension:          true, // Default to enabled
+		DataRetentionPeriod:         7,
+		ShowShellExtension:          true,
 	}
 }
 
