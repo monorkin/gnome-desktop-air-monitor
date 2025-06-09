@@ -97,7 +97,7 @@ func (app *App) setupSettingsPage() {
 	sizeLabel := gtk.NewLabel("Calculating...")
 	sizeLabel.AddCSSClass("dim-label")
 	sizeLabel.SetVAlign(gtk.AlignCenter)
-	
+
 	// Load size asynchronously to avoid blocking UI
 	go func() {
 		if size, err := database.GetSize(); err == nil {
@@ -129,11 +129,8 @@ func (app *App) showSettingsPage() {
 	app.mainWindow.SetTitle("Settings")
 	app.backButton.SetVisible(true)
 	app.settingsButton.SetVisible(false)
-	// Clear current device tracking
-	app.currentDeviceSerial = ""
-	app.currentGraphState = nil // Clear graph state when leaving device page
-	app.currentScrollPosition = 0 // Reset scroll position
-	app.currentDeviceScrolled = nil // Clear reused scrolled window
+	// Clear device page state when leaving device page
+	app.devicePage.clearState()
 }
 
 // formatFileSize formats bytes into a human-readable string

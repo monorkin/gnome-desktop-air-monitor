@@ -14,7 +14,26 @@ import (
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/models"
 )
 
+// DevicePageState holds all state related to the device detail page
+type DevicePageState struct {
+	currentDeviceSerial   string              // Serial number of currently shown device, empty if none
+	isEditingDeviceName   bool                // Flag to prevent UI refresh while editing device name
+	currentGraphState     *GraphState         // State of the current device graph
+	currentScrollPosition float64             // Scroll position of current device page
+	currentDeviceScrolled *gtk.ScrolledWindow // Reused scrolled window to maintain scroll position
+}
+
 func (app *App) showDevicePage(deviceIndex int) {
+	app.devicePage.showDevicePage(app, deviceIndex)
+}
+
+// refreshCurrentDevicePage refreshes the currently shown device page if one is displayed
+func (app *App) refreshCurrentDevicePage() {
+	app.devicePage.refreshCurrentDevicePage(app)
+}
+
+// showDevicePage displays the device detail page
+func (dp *DevicePageState) showDevicePage(app *App, deviceIndex int) {
 	// Fetch devices from database
 	devices, err := app.getDevicesWithMeasurements()
 	if err != nil || deviceIndex >= len(devices) {
@@ -25,7 +44,7 @@ func (app *App) showDevicePage(deviceIndex int) {
 	deviceData := devices[deviceIndex]
 
 	// Track the currently shown device
-	app.currentDeviceSerial = deviceData.Device.SerialNumber
+	dp.currentDeviceSerial = deviceData.Device.SerialNumber
 
 	var scrolled *gtk.ScrolledWindow
 	var vAdjustment *gtk.Adjustment
@@ -33,8 +52,8 @@ func (app *App) showDevicePage(deviceIndex int) {
 	var savedScrollPosition float64
 
 	// Reuse existing scrolled window if we're refreshing the same device
-	if app.currentDeviceScrolled != nil && app.currentDeviceSerial == deviceData.Device.SerialNumber {
-		scrolled = app.currentDeviceScrolled
+	if dp.currentDeviceScrolled != nil && dp.currentDeviceSerial == deviceData.Device.SerialNumber {
+		scrolled = dp.currentDeviceScrolled
 		vAdjustment = scrolled.VAdjustment()
 		// Save current scroll position before content update
 		savedScrollPosition = vAdjustment.Value()
@@ -49,13 +68,13 @@ func (app *App) showDevicePage(deviceIndex int) {
 
 		// Save scroll position when it changes
 		vAdjustment.ConnectValueChanged(func() {
-			if app.currentDeviceSerial == deviceData.Device.SerialNumber {
-				app.currentScrollPosition = vAdjustment.Value()
+			if dp.currentDeviceSerial == deviceData.Device.SerialNumber {
+				dp.currentScrollPosition = vAdjustment.Value()
 			}
 		})
 
-		app.currentDeviceScrolled = scrolled
-		savedScrollPosition = app.currentScrollPosition
+		dp.currentDeviceScrolled = scrolled
+		savedScrollPosition = dp.currentScrollPosition
 	}
 
 	contentBox := gtk.NewBox(gtk.OrientationVertical, 24)
@@ -74,7 +93,7 @@ func (app *App) showDevicePage(deviceIndex int) {
 	headerTextBox.SetVAlign(gtk.AlignCenter)
 
 	// Create clickable device name with inline editing
-	app.setupEditableDeviceName(headerTextBox, &deviceData, deviceIndex)
+	dp.setupEditableDeviceName(app, headerTextBox, &deviceData, deviceIndex)
 
 	scoreLabel := gtk.NewLabel(fmt.Sprintf("Air Quality Score: %.0f", deviceData.Measurement.Score))
 	scoreLabel.AddCSSClass("subtitle")
@@ -113,7 +132,7 @@ func (app *App) showDevicePage(deviceIndex int) {
 	contentBox.Append(metricsGroup)
 
 	// Add 24-hour graph with navigation
-	app.addMeasurementGraph(contentBox, &deviceData)
+	dp.addMeasurementGraph(app, contentBox, &deviceData)
 
 	deviceInfoGroup := adw.NewPreferencesGroup()
 	deviceInfoGroup.SetTitle("Device Information")
@@ -168,8 +187,8 @@ func (app *App) showDevicePage(deviceIndex int) {
 }
 
 // refreshCurrentDevicePage refreshes the currently shown device page if one is displayed
-func (app *App) refreshCurrentDevicePage() {
-	if app.currentDeviceSerial == "" {
+func (dp *DevicePageState) refreshCurrentDevicePage(app *App) {
+	if dp.currentDeviceSerial == "" {
 		return // No device page is currently shown
 	}
 
@@ -182,9 +201,9 @@ func (app *App) refreshCurrentDevicePage() {
 
 	// Find the device by serial number
 	for i, deviceData := range devices {
-		if deviceData.Device.SerialNumber == app.currentDeviceSerial {
+		if deviceData.Device.SerialNumber == dp.currentDeviceSerial {
 			// Re-show the device page with updated data
-			app.showDevicePage(i)
+			dp.showDevicePage(app, i)
 			return
 		}
 	}
@@ -193,8 +212,16 @@ func (app *App) refreshCurrentDevicePage() {
 	app.showIndexPage()
 }
 
+// clearState clears the device page state when leaving the page
+func (dp *DevicePageState) clearState() {
+	dp.currentDeviceSerial = ""
+	dp.currentGraphState = nil
+	dp.currentScrollPosition = 0
+	dp.currentDeviceScrolled = nil
+}
+
 // setupEditableDeviceName creates an editable device name widget
-func (app *App) setupEditableDeviceName(container *gtk.Box, deviceData *DeviceWithMeasurement, deviceIndex int) {
+func (dp *DevicePageState) setupEditableDeviceName(app *App, container *gtk.Box, deviceData *DeviceWithMeasurement, deviceIndex int) {
 	// Create a stack to switch between label and entry
 	nameStack := gtk.NewStack()
 	nameStack.SetTransitionType(gtk.StackTransitionTypeSlideUpDown)
@@ -223,7 +250,7 @@ func (app *App) setupEditableDeviceName(container *gtk.Box, deviceData *DeviceWi
 	labelGesture := gtk.NewGestureClick()
 	labelGesture.ConnectPressed(func(nPress int, x, y float64) {
 		if nPress == 1 { // Single click
-			app.isEditingDeviceName = true
+			dp.isEditingDeviceName = true
 			nameStack.SetVisibleChildName("edit")
 			nameEntry.GrabFocus() // Focus the entry field
 		}
@@ -243,10 +270,10 @@ func (app *App) setupEditableDeviceName(container *gtk.Box, deviceData *DeviceWi
 	saveButton.ConnectClicked(func() {
 		newName := nameEntry.Text()
 		if newName != "" && newName != deviceData.Device.Name {
-			app.updateDeviceName(deviceData.Device.ID, newName, deviceIndex)
+			dp.updateDeviceName(app, deviceData.Device.ID, newName, deviceIndex)
 		} else {
 			// Cancel edit - switch back to view
-			app.isEditingDeviceName = false
+			dp.isEditingDeviceName = false
 			nameStack.SetVisibleChildName("view")
 		}
 	})
@@ -257,7 +284,7 @@ func (app *App) setupEditableDeviceName(container *gtk.Box, deviceData *DeviceWi
 	cancelButton.SetTooltipText("Cancel")
 	cancelButton.ConnectClicked(func() {
 		nameEntry.SetText(deviceData.Device.Name) // Reset text
-		app.isEditingDeviceName = false
+		dp.isEditingDeviceName = false
 		nameStack.SetVisibleChildName("view")
 	})
 	editBox.Append(cancelButton)
@@ -285,21 +312,21 @@ func (app *App) setupEditableDeviceName(container *gtk.Box, deviceData *DeviceWi
 }
 
 // updateDeviceName updates the device name in the database
-func (app *App) updateDeviceName(deviceID uint, newName string, deviceIndex int) {
+func (dp *DevicePageState) updateDeviceName(app *App, deviceID uint, newName string, deviceIndex int) {
 	app.logger.Info("Updating device name", "device_id", deviceID, "new_name", newName)
 
 	// Update device name in database
 	err := database.DB.Model(&models.Device{}).Where("id = ?", deviceID).Update("name", newName).Error
 	if err != nil {
 		app.logger.Error("Failed to update device name", "device_id", deviceID, "error", err)
-		app.isEditingDeviceName = false // Clear flag so UI can refresh normally
+		dp.isEditingDeviceName = false // Clear flag so UI can refresh normally
 		return
 	}
 
 	app.logger.Info("Device name updated successfully", "device_id", deviceID, "new_name", newName)
 
 	// Clear editing flag and refresh the UI
-	app.isEditingDeviceName = false
+	dp.isEditingDeviceName = false
 	app.refreshDevicesFromDatabaseSafe()
 
 	// The page will be refreshed automatically, but we need to update the window title
@@ -329,15 +356,15 @@ func getMetricInfo() map[MetricType]MetricInfo {
 }
 
 // addMeasurementGraph creates and adds the measurement graph widget
-func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMeasurement) {
+func (dp *DevicePageState) addMeasurementGraph(app *App, container *gtk.Box, deviceData *DeviceWithMeasurement) {
 	graphGroup := adw.NewPreferencesGroup()
 	graphGroup.SetTitle("Measurement Trends")
 
 	// Reuse existing graph state if available, otherwise create new
 	var graphState *GraphState
-	if app.currentGraphState != nil && app.currentGraphState.device.Device.SerialNumber == deviceData.Device.SerialNumber {
+	if dp.currentGraphState != nil && dp.currentGraphState.device.Device.SerialNumber == deviceData.Device.SerialNumber {
 		// Reuse existing state but update device data
-		graphState = app.currentGraphState
+		graphState = dp.currentGraphState
 		graphState.device = deviceData
 		// Clear button references since we're recreating the UI
 		graphState.metricButtons = make(map[MetricType]*gtk.Button)
@@ -354,7 +381,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 			hoverX:         -1, // Not hovering initially
 			hoveredPoint:   -1, // No point hovered initially
 		}
-		app.currentGraphState = graphState
+		dp.currentGraphState = graphState
 	}
 
 	// Metric selector buttons
@@ -383,7 +410,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 		// Capture the metric type for the closure
 		currentMetric := metricType
 		button.ConnectClicked(func() {
-			app.selectMetric(graphState, currentMetric)
+			dp.selectMetric(app, graphState, currentMetric)
 		})
 
 		buttonRow.Append(button)
@@ -427,7 +454,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 		// Capture duration for closure
 		duration := tw.duration
 		button.ConnectClicked(func() {
-			app.selectTimeWindow(graphState, duration)
+			dp.selectTimeWindow(app, graphState, duration)
 		})
 
 		windowPickerBox.Append(button)
@@ -448,12 +475,12 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	leftButton.SetTooltipText("Go back in time")
 	leftButton.ConnectClicked(func() {
 		stepSize := graphState.timeWindow / 3 // Move by 1/3 of window
-		app.navigateTime(graphState, -stepSize)
+		dp.navigateTime(app, graphState, -stepSize)
 	})
 	navControlsBox.Append(leftButton)
 
 	// Time label
-	graphState.timeLabel = gtk.NewLabel(app.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
+	graphState.timeLabel = gtk.NewLabel(dp.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
 	graphState.timeLabel.AddCSSClass("caption")
 	navControlsBox.Append(graphState.timeLabel)
 
@@ -462,7 +489,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	rightButton.SetTooltipText("Go forward in time")
 	rightButton.ConnectClicked(func() {
 		stepSize := graphState.timeWindow / 3 // Move by 1/3 of window
-		app.navigateTime(graphState, stepSize)
+		dp.navigateTime(app, graphState, stepSize)
 	})
 	navControlsBox.Append(rightButton)
 
@@ -475,16 +502,16 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	graphState.drawingArea.SetVExpand(false)
 
 	graphState.drawingArea.SetDrawFunc(func(area *gtk.DrawingArea, cr *cairo.Context, width, height int) {
-		app.drawGraph(cr, graphState, width, height)
+		dp.drawGraph(app, cr, graphState, width, height)
 	})
 
 	// Add mouse motion controller for hover effects
 	motionController := gtk.NewEventControllerMotion()
 	motionController.ConnectMotion(func(x, y float64) {
-		app.onGraphMouseMotion(graphState, x, y)
+		dp.onGraphMouseMotion(app, graphState, x, y)
 	})
 	motionController.ConnectLeave(func() {
-		app.onGraphMouseLeave(graphState)
+		dp.onGraphMouseLeave(app, graphState)
 	})
 	graphState.drawingArea.AddController(motionController)
 
@@ -508,7 +535,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 }
 
 // selectMetric changes the selected metric and updates the graph
-func (app *App) selectMetric(graphState *GraphState, metricType MetricType) {
+func (dp *DevicePageState) selectMetric(app *App, graphState *GraphState, metricType MetricType) {
 	// Update button styles - remove suggested-action from all buttons
 	for _, button := range graphState.metricButtons {
 		button.RemoveCSSClass("suggested-action")
@@ -527,7 +554,7 @@ func (app *App) selectMetric(graphState *GraphState, metricType MetricType) {
 }
 
 // selectTimeWindow changes the time window duration
-func (app *App) selectTimeWindow(graphState *GraphState, duration time.Duration) {
+func (dp *DevicePageState) selectTimeWindow(app *App, graphState *GraphState, duration time.Duration) {
 	// Update button styles - remove suggested-action from all buttons
 	for _, button := range graphState.windowButtons {
 		button.RemoveCSSClass("suggested-action")
@@ -546,7 +573,7 @@ func (app *App) selectTimeWindow(graphState *GraphState, duration time.Duration)
 
 	// Update time label
 	if graphState.timeLabel != nil {
-		graphState.timeLabel.SetText(app.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
+		graphState.timeLabel.SetText(dp.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
 	}
 
 	// Redraw graph
@@ -554,7 +581,7 @@ func (app *App) selectTimeWindow(graphState *GraphState, duration time.Duration)
 }
 
 // navigateTime moves the time window and updates the graph
-func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
+func (dp *DevicePageState) navigateTime(app *App, graphState *GraphState, deltaTime time.Duration) {
 	newOffset := graphState.timeOffset + deltaTime
 
 	// Don't allow going into the future
@@ -572,7 +599,7 @@ func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 
 	// Update time label
 	if graphState.timeLabel != nil {
-		graphState.timeLabel.SetText(app.getTimeWindowLabel(newOffset, graphState.timeWindow))
+		graphState.timeLabel.SetText(dp.getTimeWindowLabel(newOffset, graphState.timeWindow))
 	}
 
 	// Redraw the graph
@@ -580,7 +607,7 @@ func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 }
 
 // getTimeWindowLabel returns a human-readable label for the current time window
-func (app *App) getTimeWindowLabel(offset time.Duration, windowDuration time.Duration) string {
+func (dp *DevicePageState) getTimeWindowLabel(offset time.Duration, windowDuration time.Duration) string {
 	windowHours := int(windowDuration.Hours())
 
 	if offset == 0 {
@@ -607,7 +634,7 @@ func (app *App) getTimeWindowLabel(offset time.Duration, windowDuration time.Dur
 }
 
 // drawGraph renders the measurement graph
-func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, height int) {
+func (dp *DevicePageState) drawGraph(app *App, cr *cairo.Context, graphState *GraphState, width, height int) {
 	// Set background
 	cr.SetSourceRGB(1, 1, 1) // White background
 	cr.Paint()
@@ -624,9 +651,9 @@ func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, heig
 	}
 
 	// Get measurements for the current time window
-	measurements := app.getMeasurementsForTimeWindow(graphState.device.Device.ID, graphState.timeOffset, graphState.timeWindow)
+	measurements := dp.getMeasurementsForTimeWindow(app, graphState.device.Device.ID, graphState.timeOffset, graphState.timeWindow)
 	if len(measurements) == 0 {
-		app.drawNoDataMessage(cr, width, height)
+		dp.drawNoDataMessage(cr, width, height)
 		return
 	}
 
@@ -681,26 +708,26 @@ func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, heig
 	startTime := endTime.Add(-graphState.timeWindow)
 
 	// Draw grid and axes
-	app.drawGridAndAxes(cr, marginLeft, marginTop, graphWidth, graphHeight,
+	dp.drawGridAndAxes(cr, marginLeft, marginTop, graphWidth, graphHeight,
 		startTime, endTime, minVal, maxVal, metricInfo.Unit)
 
 	// Draw the area under the curve
-	app.drawGraphArea(cr, measurements, values, times, marginLeft, marginTop,
+	dp.drawGraphArea(cr, measurements, values, times, marginLeft, marginTop,
 		graphWidth, graphHeight, startTime, endTime, minVal, maxVal, metricInfo.Color)
 
 	// Draw the line
-	app.drawGraphLine(cr, measurements, values, times, marginLeft, marginTop,
+	dp.drawGraphLine(cr, measurements, values, times, marginLeft, marginTop,
 		graphWidth, graphHeight, startTime, endTime, minVal, maxVal, metricInfo.Color)
 
 	// Draw hover effects if mouse is over the graph
 	if graphState.hoveredPoint >= 0 && graphState.hoveredPoint < len(measurements) {
-		app.drawHoverEffects(cr, graphState, measurements, values, times, marginLeft, marginTop,
+		dp.drawHoverEffects(app, cr, graphState, measurements, values, times, marginLeft, marginTop,
 			graphWidth, graphHeight, startTime, endTime, minVal, maxVal, metricInfo)
 	}
 }
 
 // getMeasurementsForTimeWindow fetches measurements for the specified time window
-func (app *App) getMeasurementsForTimeWindow(deviceID uint, offset time.Duration, windowDuration time.Duration) []models.Measurement {
+func (dp *DevicePageState) getMeasurementsForTimeWindow(app *App, deviceID uint, offset time.Duration, windowDuration time.Duration) []models.Measurement {
 	// Use UTC time to match database timestamps
 	endTime := time.Now().UTC().Add(offset)
 	startTime := endTime.Add(-windowDuration)
@@ -719,14 +746,14 @@ func (app *App) getMeasurementsForTimeWindow(deviceID uint, offset time.Duration
 }
 
 // drawNoDataMessage displays a message when no data is available
-func (app *App) drawNoDataMessage(cr *cairo.Context, width, height int) {
+func (dp *DevicePageState) drawNoDataMessage(cr *cairo.Context, width, height int) {
 	cr.SetSourceRGB(0.5, 0.5, 0.5)
 	cr.MoveTo(float64(width/2-50), float64(height/2))
 	cr.ShowText("No data available")
 }
 
 // drawGridAndAxes draws the graph grid and axis labels
-func (app *App) drawGridAndAxes(cr *cairo.Context, marginLeft, marginTop, graphWidth, graphHeight int,
+func (dp *DevicePageState) drawGridAndAxes(cr *cairo.Context, marginLeft, marginTop, graphWidth, graphHeight int,
 	startTime, endTime time.Time, minVal, maxVal float64, unit string,
 ) {
 	// Set grid color
@@ -780,7 +807,7 @@ func (app *App) drawGridAndAxes(cr *cairo.Context, marginLeft, marginTop, graphW
 }
 
 // drawGraphArea draws the filled area under the graph line
-func (app *App) drawGraphArea(cr *cairo.Context, measurements []models.Measurement, values []float64, times []time.Time,
+func (dp *DevicePageState) drawGraphArea(cr *cairo.Context, measurements []models.Measurement, values []float64, times []time.Time,
 	marginLeft, marginTop, graphWidth, graphHeight int, startTime, endTime time.Time, minVal, maxVal float64, color [3]float64,
 ) {
 	if len(values) == 0 {
@@ -818,7 +845,7 @@ func (app *App) drawGraphArea(cr *cairo.Context, measurements []models.Measureme
 }
 
 // drawGraphLine draws the graph line
-func (app *App) drawGraphLine(cr *cairo.Context, measurements []models.Measurement, values []float64, times []time.Time,
+func (dp *DevicePageState) drawGraphLine(cr *cairo.Context, measurements []models.Measurement, values []float64, times []time.Time,
 	marginLeft, marginTop, graphWidth, graphHeight int, startTime, endTime time.Time, minVal, maxVal float64, color [3]float64,
 ) {
 	if len(values) == 0 {
@@ -850,19 +877,19 @@ func (app *App) drawGraphLine(cr *cairo.Context, measurements []models.Measureme
 }
 
 // onGraphMouseMotion handles mouse motion over the graph
-func (app *App) onGraphMouseMotion(graphState *GraphState, x, y float64) {
+func (dp *DevicePageState) onGraphMouseMotion(app *App, graphState *GraphState, x, y float64) {
 	graphState.hoverX = x
 	graphState.hoverY = y
 
 	// Find the closest measurement point to the mouse position
-	graphState.hoveredPoint = app.findClosestPoint(graphState, x, y)
+	graphState.hoveredPoint = dp.findClosestPoint(app, graphState, x, y)
 
 	// Redraw to show hover effects
 	graphState.drawingArea.QueueDraw()
 }
 
 // onGraphMouseLeave handles mouse leaving the graph area
-func (app *App) onGraphMouseLeave(graphState *GraphState) {
+func (dp *DevicePageState) onGraphMouseLeave(app *App, graphState *GraphState) {
 	graphState.hoverX = -1
 	graphState.hoverY = -1
 	graphState.hoveredPoint = -1
@@ -872,9 +899,9 @@ func (app *App) onGraphMouseLeave(graphState *GraphState) {
 }
 
 // findClosestPoint finds the measurement point closest to the mouse cursor
-func (app *App) findClosestPoint(graphState *GraphState, mouseX, mouseY float64) int {
+func (dp *DevicePageState) findClosestPoint(app *App, graphState *GraphState, mouseX, mouseY float64) int {
 	// Get measurements for the current time window
-	measurements := app.getMeasurementsForTimeWindow(graphState.device.Device.ID, graphState.timeOffset, graphState.timeWindow)
+	measurements := dp.getMeasurementsForTimeWindow(app, graphState.device.Device.ID, graphState.timeOffset, graphState.timeWindow)
 	if len(measurements) == 0 {
 		return -1
 	}
@@ -921,7 +948,7 @@ func (app *App) findClosestPoint(graphState *GraphState, mouseX, mouseY float64)
 }
 
 // drawHoverEffects draws the hover indicator and tooltip
-func (app *App) drawHoverEffects(cr *cairo.Context, graphState *GraphState, measurements []models.Measurement,
+func (dp *DevicePageState) drawHoverEffects(app *App, cr *cairo.Context, graphState *GraphState, measurements []models.Measurement,
 	values []float64, times []time.Time, marginLeft, marginTop, graphWidth, graphHeight int,
 	startTime, endTime time.Time, minVal, maxVal float64, metricInfo MetricInfo,
 ) {
@@ -960,11 +987,11 @@ func (app *App) drawHoverEffects(cr *cairo.Context, graphState *GraphState, meas
 	cr.Stroke()
 
 	// Draw tooltip
-	app.drawTooltip(cr, measurement, value, metricInfo, float64(pointX), float64(pointY))
+	dp.drawTooltip(app, cr, measurement, value, metricInfo, float64(pointX), float64(pointY))
 }
 
 // drawTooltip draws a tooltip showing the measurement value
-func (app *App) drawTooltip(cr *cairo.Context, measurement models.Measurement, value float64,
+func (dp *DevicePageState) drawTooltip(app *App, cr *cairo.Context, measurement models.Measurement, value float64,
 	metricInfo MetricInfo, pointX, pointY float64,
 ) {
 	// Format the tooltip text

@@ -44,7 +44,7 @@ func (app *App) createDeviceRow(deviceData DeviceWithMeasurement, index int) *gt
 
 	gesture := gtk.NewGestureClick()
 	gesture.ConnectPressed(func(nPress int, x, y float64) {
-		app.showDevicePage(index)
+		app.devicePage.showDevicePage(app, index)
 	})
 	row.AddController(gesture)
 

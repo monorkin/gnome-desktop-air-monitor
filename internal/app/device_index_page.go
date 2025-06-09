@@ -101,9 +101,6 @@ func (app *App) showIndexPage() {
 	app.mainWindow.SetTitle("Air Monitor")
 	app.backButton.SetVisible(false)
 	app.settingsButton.SetVisible(true)
-	// Clear current device tracking
-	app.currentDeviceSerial = ""
-	app.currentGraphState = nil // Clear graph state when leaving device page
-	app.currentScrollPosition = 0 // Reset scroll position
-	app.currentDeviceScrolled = nil // Clear reused scrolled window
+	// Clear device page state when leaving device page
+	app.devicePage.clearState()
 }

@@ -23,22 +23,19 @@ var settings *config.Settings
 
 type App struct {
 	*gtk.Application
-	mainWindow          *adw.ApplicationWindow
-	apiClient           *api.Client
-	stack               *gtk.Stack
-	headerBar           *adw.HeaderBar
-	backButton          *gtk.Button
-	settingsButton      *gtk.Button
-	dbusService         *DBusService
-	logger              *slog.Logger
-	indexListBox        *gtk.ListBox
-	currentDeviceSerial string // Serial number of currently shown device, empty if none
-	isEditingDeviceName bool   // Flag to prevent UI refresh while editing device name
-	currentGraphState   *GraphState // State of the current device graph
-	currentScrollPosition float64 // Scroll position of current device page
-	currentDeviceScrolled *gtk.ScrolledWindow // Reused scrolled window to maintain scroll position
-	cleanupTicker     *time.Ticker // Ticker for periodic data cleanup
+	mainWindow     *adw.ApplicationWindow
+	apiClient      *api.Client
+	stack          *gtk.Stack
+	headerBar      *adw.HeaderBar
+	backButton     *gtk.Button
+	settingsButton *gtk.Button
+	dbusService    *DBusService
+	logger         *slog.Logger
+	indexListBox   *gtk.ListBox
+	devicePage     *DevicePageState // Device page state
+	cleanupTicker  *time.Ticker     // Ticker for periodic data cleanup
 }
+
 
 type DeviceWithMeasurement struct {
 	Device      models.Device
@@ -51,9 +48,9 @@ type GraphState struct {
 	timeOffset     time.Duration // Offset from current time (0 = now, -8h = 8 hours ago)
 	timeWindow     time.Duration // Duration of time window (1h, 4h, 8h, 16h, 24h)
 	drawingArea    *gtk.DrawingArea
-	timeLabel      *gtk.Label // Reference to time navigation label
-	windowLabel    *gtk.Label // Reference to time window label
-	metricButtons  map[MetricType]*gtk.Button // References to metric buttons for styling
+	timeLabel      *gtk.Label                    // Reference to time navigation label
+	windowLabel    *gtk.Label                    // Reference to time window label
+	metricButtons  map[MetricType]*gtk.Button    // References to metric buttons for styling
 	windowButtons  map[time.Duration]*gtk.Button // References to time window buttons for styling
 	device         *DeviceWithMeasurement
 	hoverX         float64 // X coordinate of mouse hover (-1 if not hovering)
@@ -96,6 +93,7 @@ func NewApp() *App {
 		Application: application,
 		apiClient:   api.NewClientWithLogger(logger),
 		logger:      logger,
+		devicePage:  &DevicePageState{}, // Initialize device page state
 	}
 
 	app.ConnectActivate(app.onActivate)
@@ -275,20 +273,20 @@ func (app *App) storeDevice(device models.Device) error {
 // refreshDevicesFromDatabase reloads devices and refreshes the UI
 func (app *App) refreshDevicesFromDatabase() {
 	// Don't refresh if user is editing device name
-	if app.isEditingDeviceName {
+	if app.devicePage.isEditingDeviceName {
 		app.logger.Debug("Skipping UI refresh - device name editing in progress")
 		return
 	}
 
 	app.logger.Debug("Starting UI refresh from database")
 
-	app.logger.Debug("Refreshing UI components", "current_device", app.currentDeviceSerial)
+	app.logger.Debug("Refreshing UI components", "current_device", app.devicePage.currentDeviceSerial)
 
 	// Refresh the index page if it exists
 	app.refreshIndexPage()
 
 	// Refresh the current device page if one is shown
-	app.refreshCurrentDevicePage()
+	app.devicePage.refreshCurrentDevicePage(app)
 
 	app.logger.Debug("UI refresh completed")
 }
@@ -477,13 +475,13 @@ func (app *App) updateShellExtensionIfNeeded(deviceSerial string) {
 // startDataCleanup starts the periodic data cleanup process
 func (app *App) startDataCleanup() {
 	app.logger.Info("Starting periodic data cleanup", "interval", "10 minutes")
-	
+
 	// Run initial cleanup
 	app.cleanupOldMeasurements()
-	
+
 	// Set up ticker for every 10 minutes
 	app.cleanupTicker = time.NewTicker(10 * time.Minute)
-	
+
 	go func() {
 		for range app.cleanupTicker.C {
 			app.cleanupOldMeasurements()
@@ -506,21 +504,21 @@ func (app *App) cleanupOldMeasurements() {
 		app.logger.Debug("Data retention disabled (period <= 0)")
 		return
 	}
-	
+
 	cutoffTime := time.Now().AddDate(0, 0, -settings.DataRetentionPeriod)
-	
-	app.logger.Debug("Cleaning up old measurements", 
+
+	app.logger.Debug("Cleaning up old measurements",
 		"retention_days", settings.DataRetentionPeriod,
 		"cutoff_time", cutoffTime.Format("2006-01-02 15:04:05"))
-	
+
 	result := database.DB.Where("timestamp < ?", cutoffTime).Delete(&models.Measurement{})
 	if result.Error != nil {
 		app.logger.Error("Failed to cleanup old measurements", "error", result.Error)
 		return
 	}
-	
+
 	if result.RowsAffected > 0 {
-		app.logger.Info("Cleaned up old measurements", 
+		app.logger.Info("Cleaned up old measurements",
 			"deleted_count", result.RowsAffected,
 			"cutoff_time", cutoffTime.Format("2006-01-02 15:04:05"))
 	} else {
@@ -532,18 +530,18 @@ func (app *App) cleanupOldMeasurements() {
 func (app *App) setupDeviceDropdown(deviceRow *adw.ActionRow) {
 	// Create string list model for the dropdown
 	stringList := gtk.NewStringList(nil)
-	
+
 	// Create dropdown
 	dropdown := gtk.NewDropDown(stringList, nil)
 	dropdown.SetHExpand(false)
 	dropdown.SetVAlign(gtk.AlignCenter)
-	
+
 	// Add dropdown to the row
 	deviceRow.AddSuffix(dropdown)
-	
+
 	// Load devices and populate dropdown
 	app.refreshDeviceDropdown(dropdown, stringList)
-	
+
 	// Connect to selection changes
 	dropdown.Connect("notify::selected", func() {
 		selectedIndex := dropdown.Selected()
@@ -555,17 +553,17 @@ func (app *App) setupDeviceDropdown(deviceRow *adw.ActionRow) {
 func (app *App) refreshDeviceDropdown(dropdown *gtk.DropDown, stringList *gtk.StringList) {
 	// Clear existing items
 	stringList.Splice(0, stringList.NItems(), nil)
-	
+
 	// Add "No device selected" option
 	stringList.Append("No device selected")
-	
+
 	// Load devices from database
 	devices, err := app.getDevicesWithMeasurements()
 	if err != nil {
 		app.logger.Error("Failed to load devices for dropdown", "error", err)
 		return
 	}
-	
+
 	// Add devices to dropdown
 	selectedIndex := uint32(0) // Default to "No device selected"
 	for i, deviceData := range devices {
@@ -574,14 +572,14 @@ func (app *App) refreshDeviceDropdown(dropdown *gtk.DropDown, stringList *gtk.St
 			displayName = deviceData.Device.SerialNumber
 		}
 		stringList.Append(displayName)
-		
+
 		// Check if this device is currently selected in settings
-		if settings.StatusBarDeviceSerialNumber != nil && 
-		   deviceData.Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
+		if settings.StatusBarDeviceSerialNumber != nil &&
+			deviceData.Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
 			selectedIndex = uint32(i + 1) // +1 because of "No device selected" option
 		}
 	}
-	
+
 	// Set the current selection
 	dropdown.SetSelected(uint(selectedIndex))
 }
@@ -598,7 +596,7 @@ func (app *App) onDeviceSelectionChanged(selectedIndex uint32, stringList *gtk.S
 			app.logger.Error("Failed to get devices for selection", "error", err)
 			return
 		}
-		
+
 		deviceIndex := int(selectedIndex - 1) // -1 because of "No device selected" option
 		if deviceIndex >= 0 && deviceIndex < len(devices) {
 			selectedSerial := devices[deviceIndex].Device.SerialNumber
@@ -606,14 +604,14 @@ func (app *App) onDeviceSelectionChanged(selectedIndex uint32, stringList *gtk.S
 			app.logger.Info("Device selected for status bar", "device_serial", selectedSerial)
 		}
 	}
-	
+
 	// Save settings
 	err := settings.Save()
 	if err != nil {
 		app.logger.Error("Failed to save settings", "error", err)
 		return
 	}
-	
+
 	// Update shell extension with new selection
 	if app.dbusService != nil {
 		app.dbusService.EmitDeviceUpdated()
@@ -624,7 +622,7 @@ func (app *App) onDeviceSelectionChanged(selectedIndex uint32, stringList *gtk.S
 func (app *App) setupVisibilityToggle(visibilitySwitch *gtk.Switch) {
 	// Set initial state based on settings
 	visibilitySwitch.SetActive(settings.ShowShellExtension)
-	
+
 	// Connect to state changes
 	visibilitySwitch.Connect("state-set", func(state bool) bool {
 		app.onVisibilityToggleChanged(state)
@@ -635,17 +633,17 @@ func (app *App) setupVisibilityToggle(visibilitySwitch *gtk.Switch) {
 // onVisibilityToggleChanged handles changes to the shell extension visibility setting
 func (app *App) onVisibilityToggleChanged(visible bool) {
 	app.logger.Info("Shell extension visibility changed", "visible", visible)
-	
+
 	// Update settings
 	settings.ShowShellExtension = visible
-	
+
 	// Save settings
 	err := settings.Save()
 	if err != nil {
 		app.logger.Error("Failed to save visibility setting", "error", err)
 		return
 	}
-	
+
 	// Update shell extension
 	if app.dbusService != nil {
 		app.dbusService.EmitVisibilityChanged()
@@ -655,17 +653,17 @@ func (app *App) onVisibilityToggleChanged(visible bool) {
 // onRetentionPeriodChanged handles changes to the data retention period setting
 func (app *App) onRetentionPeriodChanged(days int) {
 	app.logger.Info("Data retention period changed", "new_days", days, "old_days", settings.DataRetentionPeriod)
-	
+
 	// Update settings
 	settings.DataRetentionPeriod = days
-	
+
 	// Save settings
 	err := settings.Save()
 	if err != nil {
 		app.logger.Error("Failed to save retention period setting", "error", err)
 		return
 	}
-	
+
 	// Trigger immediate cleanup with new retention period
 	app.cleanupOldMeasurements()
 }
