@@ -31,9 +31,10 @@ type App struct {
 	settingsButton *gtk.Button
 	dbusService    *DBusService
 	logger         *slog.Logger
-	indexListBox   *gtk.ListBox
-	devicePage     *DevicePageState // Device page state
-	cleanupTicker  *time.Ticker     // Ticker for periodic data cleanup
+	devicePage     *DevicePageState  // Device page state
+	indexPage      *IndexPageState   // Index page state
+	settingsPage   *SettingsPageState // Settings page state
+	cleanupTicker  *time.Ticker      // Ticker for periodic data cleanup
 }
 
 
@@ -90,10 +91,12 @@ func NewApp() *App {
 	)
 
 	app := &App{
-		Application: application,
-		apiClient:   api.NewClientWithLogger(logger),
-		logger:      logger,
-		devicePage:  &DevicePageState{}, // Initialize device page state
+		Application:  application,
+		apiClient:    api.NewClientWithLogger(logger),
+		logger:       logger,
+		devicePage:   &DevicePageState{},   // Initialize device page state
+		indexPage:    &IndexPageState{},    // Initialize index page state
+		settingsPage: &SettingsPageState{}, // Initialize settings page state
 	}
 
 	app.ConnectActivate(app.onActivate)
@@ -526,129 +529,6 @@ func (app *App) cleanupOldMeasurements() {
 	}
 }
 
-// setupDeviceDropdown creates and configures the device selection dropdown
-func (app *App) setupDeviceDropdown(deviceRow *adw.ActionRow) {
-	// Create string list model for the dropdown
-	stringList := gtk.NewStringList(nil)
-
-	// Create dropdown
-	dropdown := gtk.NewDropDown(stringList, nil)
-	dropdown.SetHExpand(false)
-	dropdown.SetVAlign(gtk.AlignCenter)
-
-	// Add dropdown to the row
-	deviceRow.AddSuffix(dropdown)
-
-	// Load devices and populate dropdown
-	app.refreshDeviceDropdown(dropdown, stringList)
-
-	// Connect to selection changes
-	dropdown.Connect("notify::selected", func() {
-		selectedIndex := dropdown.Selected()
-		app.onDeviceSelectionChanged(uint32(selectedIndex), stringList)
-	})
-}
-
-// refreshDeviceDropdown refreshes the device dropdown with current devices
-func (app *App) refreshDeviceDropdown(dropdown *gtk.DropDown, stringList *gtk.StringList) {
-	// Clear existing items
-	stringList.Splice(0, stringList.NItems(), nil)
-
-	// Add "No device selected" option
-	stringList.Append("No device selected")
-
-	// Load devices from database
-	devices, err := app.getDevicesWithMeasurements()
-	if err != nil {
-		app.logger.Error("Failed to load devices for dropdown", "error", err)
-		return
-	}
-
-	// Add devices to dropdown
-	selectedIndex := uint32(0) // Default to "No device selected"
-	for i, deviceData := range devices {
-		displayName := deviceData.Device.Name
-		if displayName == "" {
-			displayName = deviceData.Device.SerialNumber
-		}
-		stringList.Append(displayName)
-
-		// Check if this device is currently selected in settings
-		if settings.StatusBarDeviceSerialNumber != nil &&
-			deviceData.Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
-			selectedIndex = uint32(i + 1) // +1 because of "No device selected" option
-		}
-	}
-
-	// Set the current selection
-	dropdown.SetSelected(uint(selectedIndex))
-}
-
-// onDeviceSelectionChanged handles device selection changes in the dropdown
-func (app *App) onDeviceSelectionChanged(selectedIndex uint32, stringList *gtk.StringList) {
-	if selectedIndex == 0 {
-		// "No device selected" option chosen
-		settings.StatusBarDeviceSerialNumber = nil
-	} else {
-		// Get devices to find the selected one
-		devices, err := app.getDevicesWithMeasurements()
-		if err != nil {
-			app.logger.Error("Failed to get devices for selection", "error", err)
-			return
-		}
-
-		deviceIndex := int(selectedIndex - 1) // -1 because of "No device selected" option
-		if deviceIndex >= 0 && deviceIndex < len(devices) {
-			selectedSerial := devices[deviceIndex].Device.SerialNumber
-			settings.StatusBarDeviceSerialNumber = &selectedSerial
-			app.logger.Info("Device selected for status bar", "device_serial", selectedSerial)
-		}
-	}
-
-	// Save settings
-	err := settings.Save()
-	if err != nil {
-		app.logger.Error("Failed to save settings", "error", err)
-		return
-	}
-
-	// Update shell extension with new selection
-	if app.dbusService != nil {
-		app.dbusService.EmitDeviceUpdated()
-	}
-}
-
-// setupVisibilityToggle configures the shell extension visibility toggle
-func (app *App) setupVisibilityToggle(visibilitySwitch *gtk.Switch) {
-	// Set initial state based on settings
-	visibilitySwitch.SetActive(settings.ShowShellExtension)
-
-	// Connect to state changes
-	visibilitySwitch.Connect("state-set", func(state bool) bool {
-		app.onVisibilityToggleChanged(state)
-		return false // Allow the state change to proceed
-	})
-}
-
-// onVisibilityToggleChanged handles changes to the shell extension visibility setting
-func (app *App) onVisibilityToggleChanged(visible bool) {
-	app.logger.Info("Shell extension visibility changed", "visible", visible)
-
-	// Update settings
-	settings.ShowShellExtension = visible
-
-	// Save settings
-	err := settings.Save()
-	if err != nil {
-		app.logger.Error("Failed to save visibility setting", "error", err)
-		return
-	}
-
-	// Update shell extension
-	if app.dbusService != nil {
-		app.dbusService.EmitVisibilityChanged()
-	}
-}
 
 // onRetentionPeriodChanged handles changes to the data retention period setting
 func (app *App) onRetentionPeriodChanged(days int) {

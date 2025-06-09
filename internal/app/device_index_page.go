@@ -4,30 +4,53 @@ import (
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 )
 
+// IndexPageState holds all state related to the device index page
+type IndexPageState struct {
+	listBox *gtk.ListBox
+}
+
+// App wrapper methods for backward compatibility
 func (app *App) setupIndexPage() {
+	app.indexPage.setupIndexPage(app)
+}
+
+func (app *App) populateIndexPage() {
+	app.indexPage.populateIndexPage(app)
+}
+
+func (app *App) refreshIndexPage() {
+	app.indexPage.refreshIndexPage(app)
+}
+
+func (app *App) showIndexPage() {
+	app.indexPage.showIndexPage(app)
+}
+
+// IndexPageState methods
+func (ip *IndexPageState) setupIndexPage(app *App) {
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
 	scrolled.SetVExpand(true)
 
-	app.indexListBox = gtk.NewListBox()
-	app.indexListBox.SetSelectionMode(gtk.SelectionNone)
-	app.indexListBox.AddCSSClass("boxed-list")
-	app.indexListBox.SetMarginTop(24)
-	app.indexListBox.SetMarginBottom(24)
-	app.indexListBox.SetMarginStart(24)
-	app.indexListBox.SetMarginEnd(24)
+	ip.listBox = gtk.NewListBox()
+	ip.listBox.SetSelectionMode(gtk.SelectionNone)
+	ip.listBox.AddCSSClass("boxed-list")
+	ip.listBox.SetMarginTop(24)
+	ip.listBox.SetMarginBottom(24)
+	ip.listBox.SetMarginStart(24)
+	ip.listBox.SetMarginEnd(24)
 
-	app.populateIndexPage()
+	ip.populateIndexPage(app)
 
-	scrolled.SetChild(app.indexListBox)
+	scrolled.SetChild(ip.listBox)
 	app.stack.AddNamed(scrolled, "index")
 	app.stack.SetVisibleChildName("index")
 }
 
-func (app *App) populateIndexPage() {
+func (ip *IndexPageState) populateIndexPage(app *App) {
 	// Clear existing rows
-	for app.indexListBox.FirstChild() != nil {
-		app.indexListBox.Remove(app.indexListBox.FirstChild())
+	for ip.listBox.FirstChild() != nil {
+		ip.listBox.Remove(ip.listBox.FirstChild())
 	}
 
 	// Fetch devices from database
@@ -54,7 +77,7 @@ func (app *App) populateIndexPage() {
 		errorDescription.SetJustify(gtk.JustifyCenter)
 		errorBox.Append(errorDescription)
 
-		app.indexListBox.Append(errorBox)
+		ip.listBox.Append(errorBox)
 		return
 	}
 
@@ -80,23 +103,23 @@ func (app *App) populateIndexPage() {
 		emptyDescription.SetJustify(gtk.JustifyCenter)
 		emptyBox.Append(emptyDescription)
 
-		app.indexListBox.Append(emptyBox)
+		ip.listBox.Append(emptyBox)
 		return
 	}
 
 	for i, deviceData := range devices {
 		row := app.createDeviceRow(deviceData, i)
-		app.indexListBox.Append(row)
+		ip.listBox.Append(row)
 	}
 }
 
-func (app *App) refreshIndexPage() {
-	if app.indexListBox != nil {
-		app.populateIndexPage()
+func (ip *IndexPageState) refreshIndexPage(app *App) {
+	if ip.listBox != nil {
+		ip.populateIndexPage(app)
 	}
 }
 
-func (app *App) showIndexPage() {
+func (ip *IndexPageState) showIndexPage(app *App) {
 	app.stack.SetVisibleChildName("index")
 	app.mainWindow.SetTitle("Air Monitor")
 	app.backButton.SetVisible(false)

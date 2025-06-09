@@ -9,7 +9,25 @@ import (
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
 )
 
+// SettingsPageState holds all state related to the settings page
+type SettingsPageState struct {
+	// UI widget references for potential future use
+	visibilitySwitch    *gtk.Switch
+	deviceDropdown      *gtk.DropDown
+	retentionSpinButton *gtk.SpinButton
+}
+
+// App wrapper methods for backward compatibility
 func (app *App) setupSettingsPage() {
+	app.settingsPage.setupSettingsPage(app)
+}
+
+func (app *App) showSettingsPage() {
+	app.settingsPage.showSettingsPage(app)
+}
+
+// SettingsPageState methods
+func (sp *SettingsPageState) setupSettingsPage(app *App) {
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
 	scrolled.SetVExpand(true)
@@ -35,13 +53,13 @@ func (app *App) setupSettingsPage() {
 	visibilityRow.SetTitle("Show Status Bar Indicator")
 	visibilityRow.SetSubtitle("Display air quality information in the top bar")
 
-	visibilitySwitch := gtk.NewSwitch()
-	visibilitySwitch.SetVAlign(gtk.AlignCenter)
-	visibilityRow.AddSuffix(visibilitySwitch)
-	visibilityRow.SetActivatableWidget(visibilitySwitch)
+	sp.visibilitySwitch = gtk.NewSwitch()
+	sp.visibilitySwitch.SetVAlign(gtk.AlignCenter)
+	visibilityRow.AddSuffix(sp.visibilitySwitch)
+	visibilityRow.SetActivatableWidget(sp.visibilitySwitch)
 
 	// Set initial state and connect to changes
-	app.setupVisibilityToggle(visibilitySwitch)
+	sp.setupVisibilityToggle(app)
 
 	shellGroup.Add(visibilityRow)
 
@@ -51,7 +69,7 @@ func (app *App) setupSettingsPage() {
 	deviceRow.SetSubtitle("Choose which device to display in the shell extension")
 
 	// Create dropdown for device selection
-	app.setupDeviceDropdown(deviceRow)
+	sp.setupDeviceDropdown(app, deviceRow)
 
 	shellGroup.Add(deviceRow)
 	contentBox.Append(shellGroup)
@@ -68,18 +86,18 @@ func (app *App) setupSettingsPage() {
 
 	// Create spin button for retention period
 	retentionAdjustment := gtk.NewAdjustment(float64(settings.DataRetentionPeriod), 1, 365, 1, 7, 0)
-	retentionSpinButton := gtk.NewSpinButton(retentionAdjustment, 1, 0)
-	retentionSpinButton.SetVAlign(gtk.AlignCenter)
-	retentionSpinButton.SetValue(float64(settings.DataRetentionPeriod))
+	sp.retentionSpinButton = gtk.NewSpinButton(retentionAdjustment, 1, 0)
+	sp.retentionSpinButton.SetVAlign(gtk.AlignCenter)
+	sp.retentionSpinButton.SetValue(float64(settings.DataRetentionPeriod))
 
 	// Connect to value changes
-	retentionSpinButton.ConnectValueChanged(func() {
-		app.onRetentionPeriodChanged(int(retentionSpinButton.Value()))
+	sp.retentionSpinButton.ConnectValueChanged(func() {
+		app.onRetentionPeriodChanged(int(sp.retentionSpinButton.Value()))
 	})
 
 	// Add suffix label for "days"
 	suffixBox := gtk.NewBox(gtk.OrientationHorizontal, 8)
-	suffixBox.Append(retentionSpinButton)
+	suffixBox.Append(sp.retentionSpinButton)
 	daysLabel := gtk.NewLabel("days")
 	daysLabel.AddCSSClass("dim-label")
 	daysLabel.SetVAlign(gtk.AlignCenter)
@@ -101,7 +119,7 @@ func (app *App) setupSettingsPage() {
 	// Load size asynchronously to avoid blocking UI
 	go func() {
 		if size, err := database.GetSize(); err == nil {
-			sizeText := formatFileSize(size)
+			sizeText := sp.formatFileSize(size)
 			// Update UI from main thread
 			glib.IdleAdd(func() bool {
 				sizeLabel.SetText(sizeText)
@@ -124,7 +142,7 @@ func (app *App) setupSettingsPage() {
 	app.stack.AddNamed(scrolled, "settings")
 }
 
-func (app *App) showSettingsPage() {
+func (sp *SettingsPageState) showSettingsPage(app *App) {
 	app.stack.SetVisibleChildName("settings")
 	app.mainWindow.SetTitle("Settings")
 	app.backButton.SetVisible(true)
@@ -133,8 +151,132 @@ func (app *App) showSettingsPage() {
 	app.devicePage.clearState()
 }
 
+// setupDeviceDropdown creates and configures the device selection dropdown
+func (sp *SettingsPageState) setupDeviceDropdown(app *App, deviceRow *adw.ActionRow) {
+	// Create string list model for the dropdown
+	stringList := gtk.NewStringList(nil)
+
+	// Create dropdown
+	sp.deviceDropdown = gtk.NewDropDown(stringList, nil)
+	sp.deviceDropdown.SetHExpand(false)
+	sp.deviceDropdown.SetVAlign(gtk.AlignCenter)
+
+	// Add dropdown to the row
+	deviceRow.AddSuffix(sp.deviceDropdown)
+
+	// Load devices and populate dropdown
+	sp.refreshDeviceDropdown(app, stringList)
+
+	// Connect to selection changes
+	sp.deviceDropdown.Connect("notify::selected", func() {
+		selectedIndex := sp.deviceDropdown.Selected()
+		sp.onDeviceSelectionChanged(app, uint32(selectedIndex), stringList)
+	})
+}
+
+// refreshDeviceDropdown refreshes the device dropdown with current devices
+func (sp *SettingsPageState) refreshDeviceDropdown(app *App, stringList *gtk.StringList) {
+	// Clear existing items
+	stringList.Splice(0, stringList.NItems(), nil)
+
+	// Add "No device selected" option
+	stringList.Append("No device selected")
+
+	// Load devices from database
+	devices, err := app.getDevicesWithMeasurements()
+	if err != nil {
+		app.logger.Error("Failed to load devices for dropdown", "error", err)
+		return
+	}
+
+	// Add devices to dropdown
+	selectedIndex := uint32(0) // Default to "No device selected"
+	for i, deviceData := range devices {
+		displayName := deviceData.Device.Name
+		if displayName == "" {
+			displayName = deviceData.Device.SerialNumber
+		}
+		stringList.Append(displayName)
+
+		// Check if this device is currently selected in settings
+		if settings.StatusBarDeviceSerialNumber != nil &&
+			deviceData.Device.SerialNumber == *settings.StatusBarDeviceSerialNumber {
+			selectedIndex = uint32(i + 1) // +1 because of "No device selected" option
+		}
+	}
+
+	// Set the current selection
+	sp.deviceDropdown.SetSelected(uint(selectedIndex))
+}
+
+// onDeviceSelectionChanged handles device selection changes in the dropdown
+func (sp *SettingsPageState) onDeviceSelectionChanged(app *App, selectedIndex uint32, stringList *gtk.StringList) {
+	if selectedIndex == 0 {
+		// "No device selected" option chosen
+		settings.StatusBarDeviceSerialNumber = nil
+	} else {
+		// Get devices to find the selected one
+		devices, err := app.getDevicesWithMeasurements()
+		if err != nil {
+			app.logger.Error("Failed to get devices for selection", "error", err)
+			return
+		}
+
+		deviceIndex := int(selectedIndex - 1) // -1 because of "No device selected" option
+		if deviceIndex >= 0 && deviceIndex < len(devices) {
+			selectedSerial := devices[deviceIndex].Device.SerialNumber
+			settings.StatusBarDeviceSerialNumber = &selectedSerial
+			app.logger.Info("Device selected for status bar", "device_serial", selectedSerial)
+		}
+	}
+
+	// Save settings
+	err := settings.Save()
+	if err != nil {
+		app.logger.Error("Failed to save settings", "error", err)
+		return
+	}
+
+	// Update shell extension with new selection
+	if app.dbusService != nil {
+		app.dbusService.EmitDeviceUpdated()
+	}
+}
+
+// setupVisibilityToggle configures the shell extension visibility toggle
+func (sp *SettingsPageState) setupVisibilityToggle(app *App) {
+	// Set initial state based on settings
+	sp.visibilitySwitch.SetActive(settings.ShowShellExtension)
+
+	// Connect to state changes
+	sp.visibilitySwitch.Connect("state-set", func(state bool) bool {
+		sp.onVisibilityToggleChanged(app, state)
+		return false // Allow the state change to proceed
+	})
+}
+
+// onVisibilityToggleChanged handles changes to the shell extension visibility setting
+func (sp *SettingsPageState) onVisibilityToggleChanged(app *App, visible bool) {
+	app.logger.Info("Shell extension visibility changed", "visible", visible)
+
+	// Update settings
+	settings.ShowShellExtension = visible
+
+	// Save settings
+	err := settings.Save()
+	if err != nil {
+		app.logger.Error("Failed to save visibility setting", "error", err)
+		return
+	}
+
+	// Update shell extension
+	if app.dbusService != nil {
+		app.dbusService.EmitVisibilityChanged()
+	}
+}
+
 // formatFileSize formats bytes into a human-readable string
-func formatFileSize(bytes int64) string {
+func (sp *SettingsPageState) formatFileSize(bytes int64) string {
 	const unit = 1024
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
