@@ -18,7 +18,6 @@ const (
 	APP_IDENTIFIER = "io.stanko.gnome-desktop-air-monitor"
 )
 
-
 type App struct {
 	*gtk.Application
 	mainWindow     *adw.ApplicationWindow
@@ -29,18 +28,16 @@ type App struct {
 	settingsButton *gtk.Button
 	dbusService    *DBusService
 	logger         *slog.Logger
-	devicePage     *DevicePageState  // Device page state
-	indexPage      *IndexPageState   // Index page state
+	devicePage     *DevicePageState   // Device page state
+	indexPage      *IndexPageState    // Index page state
 	settingsPage   *SettingsPageState // Settings page state
-	cleanupTicker  *time.Ticker      // Ticker for periodic data cleanup
+	cleanupTicker  *time.Ticker       // Ticker for periodic data cleanup
 }
-
 
 type DeviceWithMeasurement struct {
 	Device      models.Device
 	Measurement models.Measurement
 }
-
 
 func NewApp() *App {
 	// Ensure globals are initialized
@@ -489,5 +486,3 @@ func (app *App) cleanupOldMeasurements() {
 		app.logger.Debug("No old measurements to cleanup")
 	}
 }
-
-
