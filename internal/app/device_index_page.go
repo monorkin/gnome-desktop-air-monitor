@@ -103,4 +103,6 @@ func (app *App) showIndexPage() {
 	app.settingsButton.SetVisible(true)
 	// Clear current device tracking
 	app.currentDeviceSerial = ""
+	app.currentGraphState = nil // Clear graph state when leaving device page
+	app.currentScrollPosition = 0 // Reset scroll position
 }

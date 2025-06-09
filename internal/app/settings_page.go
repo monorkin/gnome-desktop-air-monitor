@@ -62,4 +62,6 @@ func (app *App) showSettingsPage() {
 	app.settingsButton.SetVisible(false)
 	// Clear current device tracking
 	app.currentDeviceSerial = ""
+	app.currentGraphState = nil // Clear graph state when leaving device page
+	app.currentScrollPosition = 0 // Reset scroll position
 }

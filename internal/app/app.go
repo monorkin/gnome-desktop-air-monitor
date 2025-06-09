@@ -34,12 +34,36 @@ type App struct {
 	indexListBox        *gtk.ListBox
 	currentDeviceSerial string // Serial number of currently shown device, empty if none
 	isEditingDeviceName bool   // Flag to prevent UI refresh while editing device name
+	currentGraphState   *GraphState // State of the current device graph
+	currentScrollPosition float64 // Scroll position of current device page
 }
 
 type DeviceWithMeasurement struct {
 	Device      models.Device
 	Measurement models.Measurement
 }
+
+// GraphState holds the current state of the graph
+type GraphState struct {
+	selectedMetric MetricType
+	timeOffset     time.Duration // Offset from current time (0 = now, -8h = 8 hours ago)
+	drawingArea    *gtk.DrawingArea
+	timeLabel      *gtk.Label // Reference to time navigation label
+	metricButtons  map[MetricType]*gtk.Button // References to metric buttons for styling
+	device         *DeviceWithMeasurement
+}
+
+// MetricType represents different measurement types for graphing
+type MetricType int
+
+const (
+	MetricTemperature MetricType = iota
+	MetricHumidity
+	MetricCO2
+	MetricVOC
+	MetricPM25
+	MetricScore
+)
 
 func NewApp() *App {
 	newSettings, settingsLoaded := config.LoadOrInitializeSettingsFromDefaultLocation()
