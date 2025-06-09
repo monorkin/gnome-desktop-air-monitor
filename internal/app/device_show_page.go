@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	adw "github.com/diamondburned/gotk4-adwaita/pkg/adw"
@@ -28,9 +29,9 @@ func (app *App) showDevicePage(deviceIndex int) {
 
 	var scrolled *gtk.ScrolledWindow
 	var vAdjustment *gtk.Adjustment
-	
+
 	var savedScrollPosition float64
-	
+
 	// Reuse existing scrolled window if we're refreshing the same device
 	if app.currentDeviceScrolled != nil && app.currentDeviceSerial == deviceData.Device.SerialNumber {
 		scrolled = app.currentDeviceScrolled
@@ -42,17 +43,17 @@ func (app *App) showDevicePage(deviceIndex int) {
 		scrolled = gtk.NewScrolledWindow()
 		scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
 		scrolled.SetVExpand(true)
-		
+
 		// Get vertical adjustment for scroll position management
 		vAdjustment = scrolled.VAdjustment()
-		
+
 		// Save scroll position when it changes
 		vAdjustment.ConnectValueChanged(func() {
 			if app.currentDeviceSerial == deviceData.Device.SerialNumber {
 				app.currentScrollPosition = vAdjustment.Value()
 			}
 		})
-		
+
 		app.currentDeviceScrolled = scrolled
 		savedScrollPosition = app.currentScrollPosition
 	}
@@ -344,12 +345,14 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	} else {
 		// Create new graph state
 		graphState = &GraphState{
-			selectedMetric: MetricScore,     // Default to air quality score
-			timeOffset:     0,               // Start with current time
-			timeWindow:     24 * time.Hour,  // Default to 24 hours
+			selectedMetric: MetricScore,    // Default to air quality score
+			timeOffset:     0,              // Start with current time
+			timeWindow:     24 * time.Hour, // Default to 24 hours
 			device:         deviceData,
 			metricButtons:  make(map[MetricType]*gtk.Button),
 			windowButtons:  make(map[time.Duration]*gtk.Button),
+			hoverX:         -1, // Not hovering initially
+			hoveredPoint:   -1, // No point hovered initially
 		}
 		app.currentGraphState = graphState
 	}
@@ -363,7 +366,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	// Create buttons in a consistent order
 	metricOrder := []MetricType{MetricScore, MetricTemperature, MetricHumidity, MetricCO2, MetricVOC, MetricPM25}
 	metricInfos := getMetricInfo()
-	
+
 	for _, metricType := range metricOrder {
 		info := metricInfos[metricType]
 		button := gtk.NewButton()
@@ -413,14 +416,14 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 		button := gtk.NewButton()
 		button.SetLabel(tw.label)
 		button.AddCSSClass("pill")
-		
+
 		if tw.duration == graphState.timeWindow {
 			button.AddCSSClass("suggested-action")
 		}
 
 		// Store button reference
 		graphState.windowButtons[tw.duration] = button
-		
+
 		// Capture duration for closure
 		duration := tw.duration
 		button.ConnectClicked(func() {
@@ -433,7 +436,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	navRow.Append(windowPickerBox)
 
 	// Spacer
-	spacer := gtk.NewLabel("") 
+	spacer := gtk.NewLabel("")
 	spacer.SetHExpand(true)
 	navRow.Append(spacer)
 
@@ -475,6 +478,16 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 		app.drawGraph(cr, graphState, width, height)
 	})
 
+	// Add mouse motion controller for hover effects
+	motionController := gtk.NewEventControllerMotion()
+	motionController.ConnectMotion(func(x, y float64) {
+		app.onGraphMouseMotion(graphState, x, y)
+	})
+	motionController.ConnectLeave(func() {
+		app.onGraphMouseLeave(graphState)
+	})
+	graphState.drawingArea.AddController(motionController)
+
 	// Wrap drawing area in a fixed-size container to prevent layout changes
 	graphContainer := gtk.NewBox(gtk.OrientationVertical, 0)
 	graphContainer.SetSizeRequest(-1, 300) // Fixed height
@@ -500,12 +513,12 @@ func (app *App) selectMetric(graphState *GraphState, metricType MetricType) {
 	for _, button := range graphState.metricButtons {
 		button.RemoveCSSClass("suggested-action")
 	}
-	
+
 	// Add suggested-action to the selected button
 	if selectedButton, exists := graphState.metricButtons[metricType]; exists {
 		selectedButton.AddCSSClass("suggested-action")
 	}
-	
+
 	// Update the selected metric
 	graphState.selectedMetric = metricType
 
@@ -519,23 +532,23 @@ func (app *App) selectTimeWindow(graphState *GraphState, duration time.Duration)
 	for _, button := range graphState.windowButtons {
 		button.RemoveCSSClass("suggested-action")
 	}
-	
+
 	// Add suggested-action to the selected button
 	if selectedButton, exists := graphState.windowButtons[duration]; exists {
 		selectedButton.AddCSSClass("suggested-action")
 	}
-	
+
 	// Update time window
 	graphState.timeWindow = duration
-	
+
 	// Reset time offset to current time when changing window
 	graphState.timeOffset = 0
-	
+
 	// Update time label
 	if graphState.timeLabel != nil {
 		graphState.timeLabel.SetText(app.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
 	}
-	
+
 	// Redraw graph
 	graphState.drawingArea.QueueDraw()
 }
@@ -561,7 +574,7 @@ func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 	if graphState.timeLabel != nil {
 		graphState.timeLabel.SetText(app.getTimeWindowLabel(newOffset, graphState.timeWindow))
 	}
-	
+
 	// Redraw the graph
 	graphState.drawingArea.QueueDraw()
 }
@@ -569,27 +582,27 @@ func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 // getTimeWindowLabel returns a human-readable label for the current time window
 func (app *App) getTimeWindowLabel(offset time.Duration, windowDuration time.Duration) string {
 	windowHours := int(windowDuration.Hours())
-	
+
 	if offset == 0 {
 		if windowHours == 1 {
 			return "Last hour"
 		}
 		return fmt.Sprintf("Last %d hours", windowHours)
 	}
-	
+
 	endTime := time.Now().Add(offset)
 	startTime := endTime.Add(-windowDuration)
-	
+
 	// For short time ranges, show time only
 	if windowDuration <= 24*time.Hour {
-		return fmt.Sprintf("%s - %s", 
-			startTime.Format("15:04"), 
+		return fmt.Sprintf("%s - %s",
+			startTime.Format("15:04"),
 			endTime.Format("15:04"))
 	}
-	
+
 	// For longer periods, show date
-	return fmt.Sprintf("%s - %s", 
-		startTime.Format("Jan 2 15:04"), 
+	return fmt.Sprintf("%s - %s",
+		startTime.Format("Jan 2 15:04"),
 		endTime.Format("Jan 2 15:04"))
 }
 
@@ -678,6 +691,12 @@ func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, heig
 	// Draw the line
 	app.drawGraphLine(cr, measurements, values, times, marginLeft, marginTop,
 		graphWidth, graphHeight, startTime, endTime, minVal, maxVal, metricInfo.Color)
+
+	// Draw hover effects if mouse is over the graph
+	if graphState.hoveredPoint >= 0 && graphState.hoveredPoint < len(measurements) {
+		app.drawHoverEffects(cr, graphState, measurements, values, times, marginLeft, marginTop,
+			graphWidth, graphHeight, startTime, endTime, minVal, maxVal, metricInfo)
+	}
 }
 
 // getMeasurementsForTimeWindow fetches measurements for the specified time window
@@ -696,7 +715,6 @@ func (app *App) getMeasurementsForTimeWindow(deviceID uint, offset time.Duration
 		return nil
 	}
 
-
 	return measurements
 }
 
@@ -706,7 +724,6 @@ func (app *App) drawNoDataMessage(cr *cairo.Context, width, height int) {
 	cr.MoveTo(float64(width/2-50), float64(height/2))
 	cr.ShowText("No data available")
 }
-
 
 // drawGridAndAxes draws the graph grid and axis labels
 func (app *App) drawGridAndAxes(cr *cairo.Context, marginLeft, marginTop, graphWidth, graphHeight int,
@@ -830,4 +847,168 @@ func (app *App) drawGraphLine(cr *cairo.Context, measurements []models.Measureme
 	}
 
 	cr.Stroke()
+}
+
+// onGraphMouseMotion handles mouse motion over the graph
+func (app *App) onGraphMouseMotion(graphState *GraphState, x, y float64) {
+	graphState.hoverX = x
+	graphState.hoverY = y
+
+	// Find the closest measurement point to the mouse position
+	graphState.hoveredPoint = app.findClosestPoint(graphState, x, y)
+
+	// Redraw to show hover effects
+	graphState.drawingArea.QueueDraw()
+}
+
+// onGraphMouseLeave handles mouse leaving the graph area
+func (app *App) onGraphMouseLeave(graphState *GraphState) {
+	graphState.hoverX = -1
+	graphState.hoverY = -1
+	graphState.hoveredPoint = -1
+
+	// Redraw to remove hover effects
+	graphState.drawingArea.QueueDraw()
+}
+
+// findClosestPoint finds the measurement point closest to the mouse cursor
+func (app *App) findClosestPoint(graphState *GraphState, mouseX, mouseY float64) int {
+	// Get measurements for the current time window
+	measurements := app.getMeasurementsForTimeWindow(graphState.device.Device.ID, graphState.timeOffset, graphState.timeWindow)
+	if len(measurements) == 0 {
+		return -1
+	}
+
+	// Graph margins (should match drawGraph function)
+	marginLeft, marginRight := 60, 20
+	marginTop, marginBottom := 20, 40
+
+	// Get drawing area size
+	allocation := graphState.drawingArea.Allocation()
+	width := allocation.Width()
+	height := allocation.Height()
+
+	graphWidth := width - marginLeft - marginRight
+	graphHeight := height - marginTop - marginBottom
+
+	if graphWidth <= 0 || graphHeight <= 0 {
+		return -1
+	}
+
+	// Time range
+	endTime := time.Now().UTC().Add(graphState.timeOffset)
+	startTime := endTime.Add(-graphState.timeWindow)
+	timeRange := endTime.Sub(startTime).Seconds()
+
+	// Find closest point
+	closestIndex := -1
+	minDistance := float64(20) // Maximum distance to consider (20 pixels)
+
+	for i, measurement := range measurements {
+		// Calculate point position
+		timePos := measurement.Timestamp.Sub(startTime).Seconds()
+		pointX := float64(marginLeft) + (timePos/timeRange)*float64(graphWidth)
+
+		// Check if mouse is close to this point horizontally
+		distance := math.Abs(mouseX - pointX)
+		if distance < minDistance {
+			minDistance = distance
+			closestIndex = i
+		}
+	}
+
+	return closestIndex
+}
+
+// drawHoverEffects draws the hover indicator and tooltip
+func (app *App) drawHoverEffects(cr *cairo.Context, graphState *GraphState, measurements []models.Measurement,
+	values []float64, times []time.Time, marginLeft, marginTop, graphWidth, graphHeight int,
+	startTime, endTime time.Time, minVal, maxVal float64, metricInfo MetricInfo,
+) {
+	pointIndex := graphState.hoveredPoint
+	if pointIndex < 0 || pointIndex >= len(measurements) {
+		return
+	}
+
+	measurement := measurements[pointIndex]
+	value := values[pointIndex]
+
+	// Calculate point position
+	timeRange := endTime.Sub(startTime).Seconds()
+	valueRange := maxVal - minVal
+
+	timePos := measurement.Timestamp.Sub(startTime).Seconds()
+	pointX := marginLeft + int(timePos/timeRange*float64(graphWidth))
+	pointY := marginTop + int((maxVal-value)/valueRange*float64(graphHeight))
+
+	// Draw vertical line at hovered point
+	cr.SetSourceRGBA(0.5, 0.5, 0.5, 0.8)
+	cr.SetLineWidth(1)
+	cr.MoveTo(float64(pointX), float64(marginTop))
+	cr.LineTo(float64(pointX), float64(marginTop+graphHeight))
+	cr.Stroke()
+
+	// Draw highlighted point
+	cr.SetSourceRGB(metricInfo.Color[0], metricInfo.Color[1], metricInfo.Color[2])
+	cr.Arc(float64(pointX), float64(pointY), 4, 0, 2*math.Pi)
+	cr.Fill()
+
+	// Draw white border around point
+	cr.SetSourceRGB(1, 1, 1)
+	cr.SetLineWidth(2)
+	cr.Arc(float64(pointX), float64(pointY), 4, 0, 2*math.Pi)
+	cr.Stroke()
+
+	// Draw tooltip
+	app.drawTooltip(cr, measurement, value, metricInfo, float64(pointX), float64(pointY))
+}
+
+// drawTooltip draws a tooltip showing the measurement value
+func (app *App) drawTooltip(cr *cairo.Context, measurement models.Measurement, value float64,
+	metricInfo MetricInfo, pointX, pointY float64,
+) {
+	// Format the tooltip text
+	timeStr := measurement.Timestamp.Local().Format("15:04:05")
+	valueStr := app.formatValue(value, metricInfo.Unit)
+	tooltipText := fmt.Sprintf("%s - %s", timeStr, valueStr)
+
+	// Set font for measuring text
+	cr.SelectFontFace("Sans", cairo.FontSlantNormal, cairo.FontWeightNormal)
+	cr.SetFontSize(12)
+
+	// Measure text to determine tooltip size
+	textExtents := cr.TextExtents(tooltipText)
+	padding := 8.0
+	tooltipWidth := textExtents.Width + padding*2
+	tooltipHeight := textExtents.Height + padding*2
+
+	// Position tooltip above the point, but adjust if it would go off screen
+	tooltipX := pointX - tooltipWidth/2
+	tooltipY := pointY - tooltipHeight - 10
+
+	// Adjust if tooltip would go off the left edge
+	if tooltipX < 0 {
+		tooltipX = 0
+	}
+
+	// Adjust if tooltip would go off the top
+	if tooltipY < 0 {
+		tooltipY = pointY + 15 // Show below the point instead
+	}
+
+	// Draw tooltip background
+	cr.SetSourceRGBA(0, 0, 0, 0.8)
+	cr.Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight)
+	cr.Fill()
+
+	// Draw tooltip border
+	cr.SetSourceRGBA(0.7, 0.7, 0.7, 0.9)
+	cr.SetLineWidth(1)
+	cr.Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight)
+	cr.Stroke()
+
+	// Draw tooltip text
+	cr.SetSourceRGB(1, 1, 1)
+	cr.MoveTo(tooltipX+padding, tooltipY+padding+textExtents.Height)
+	cr.ShowText(tooltipText)
 }

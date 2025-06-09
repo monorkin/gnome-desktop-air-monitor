@@ -55,6 +55,9 @@ type GraphState struct {
 	metricButtons  map[MetricType]*gtk.Button // References to metric buttons for styling
 	windowButtons  map[time.Duration]*gtk.Button // References to time window buttons for styling
 	device         *DeviceWithMeasurement
+	hoverX         float64 // X coordinate of mouse hover (-1 if not hovering)
+	hoverY         float64 // Y coordinate of mouse hover
+	hoveredPoint   int     // Index of hovered measurement point (-1 if none)
 }
 
 // MetricType represents different measurement types for graphing
