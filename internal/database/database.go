@@ -47,3 +47,18 @@ func SetupDatabase() (*gorm.DB, error) {
 
 	return db, nil
 }
+
+// GetDatabasePath returns the path to the database file
+func GetDatabasePath() string {
+	return config.DBPath()
+}
+
+// GetSize returns the size of the database file in bytes
+func GetSize() (int64, error) {
+	dbPath := GetDatabasePath()
+	fileInfo, err := os.Stat(dbPath)
+	if err != nil {
+		return 0, err
+	}
+	return fileInfo.Size(), nil
+}

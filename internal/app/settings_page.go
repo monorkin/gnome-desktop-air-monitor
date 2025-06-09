@@ -1,8 +1,12 @@
 package app
 
 import (
+	"fmt"
+
 	adw "github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	glib "github.com/diamondburned/gotk4/pkg/glib/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
 )
 
 func (app *App) setupSettingsPage() {
@@ -83,6 +87,37 @@ func (app *App) setupSettingsPage() {
 
 	retentionRow.AddSuffix(suffixBox)
 	dataGroup.Add(retentionRow)
+
+	// Database size row
+	sizeRow := adw.NewActionRow()
+	sizeRow.SetTitle("Database Size")
+	sizeRow.SetSubtitle("Current storage space used by measurement data")
+
+	// Get and format database size
+	sizeLabel := gtk.NewLabel("Calculating...")
+	sizeLabel.AddCSSClass("dim-label")
+	sizeLabel.SetVAlign(gtk.AlignCenter)
+	
+	// Load size asynchronously to avoid blocking UI
+	go func() {
+		if size, err := database.GetSize(); err == nil {
+			sizeText := formatFileSize(size)
+			// Update UI from main thread
+			glib.IdleAdd(func() bool {
+				sizeLabel.SetText(sizeText)
+				return false
+			})
+		} else {
+			glib.IdleAdd(func() bool {
+				sizeLabel.SetText("Error reading size")
+				return false
+			})
+		}
+	}()
+
+	sizeRow.AddSuffix(sizeLabel)
+	dataGroup.Add(sizeRow)
+
 	contentBox.Append(dataGroup)
 
 	scrolled.SetChild(contentBox)
@@ -99,4 +134,18 @@ func (app *App) showSettingsPage() {
 	app.currentGraphState = nil // Clear graph state when leaving device page
 	app.currentScrollPosition = 0 // Reset scroll position
 	app.currentDeviceScrolled = nil // Clear reused scrolled window
+}
+
+// formatFileSize formats bytes into a human-readable string
+func formatFileSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
