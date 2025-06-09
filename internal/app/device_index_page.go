@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 )
 
@@ -9,22 +11,6 @@ type IndexPageState struct {
 	listBox *gtk.ListBox
 }
 
-// App wrapper methods for backward compatibility
-func (app *App) setupIndexPage() {
-	app.indexPage.setupIndexPage(app)
-}
-
-func (app *App) populateIndexPage() {
-	app.indexPage.populateIndexPage(app)
-}
-
-func (app *App) refreshIndexPage() {
-	app.indexPage.refreshIndexPage(app)
-}
-
-func (app *App) showIndexPage() {
-	app.indexPage.showIndexPage(app)
-}
 
 // IndexPageState methods
 func (ip *IndexPageState) setupIndexPage(app *App) {
@@ -108,7 +94,7 @@ func (ip *IndexPageState) populateIndexPage(app *App) {
 	}
 
 	for i, deviceData := range devices {
-		row := app.createDeviceRow(deviceData, i)
+		row := ip.createDeviceRow(app, deviceData, i)
 		ip.listBox.Append(row)
 	}
 }
@@ -126,4 +112,47 @@ func (ip *IndexPageState) showIndexPage(app *App) {
 	app.settingsButton.SetVisible(true)
 	// Clear device page state when leaving device page
 	app.devicePage.clearState()
+}
+
+func (ip *IndexPageState) createDeviceRow(app *App, deviceData DeviceWithMeasurement, index int) *gtk.ListBoxRow {
+	row := gtk.NewListBoxRow()
+	row.SetActivatable(true)
+
+	mainBox := gtk.NewBox(gtk.OrientationHorizontal, 16)
+	mainBox.SetMarginTop(12)
+	mainBox.SetMarginBottom(12)
+	mainBox.SetMarginStart(16)
+	mainBox.SetMarginEnd(16)
+
+	scoreCircle := app.createScoreCircle(deviceData.Measurement.Score)
+	scoreCircle.SetVAlign(gtk.AlignCenter)
+	mainBox.Append(scoreCircle)
+
+	textBox := gtk.NewBox(gtk.OrientationVertical, 4)
+	textBox.SetVAlign(gtk.AlignCenter)
+
+	deviceNameLabel := gtk.NewLabel(deviceData.Device.Name)
+	deviceNameLabel.SetHAlign(gtk.AlignStart)
+	deviceNameLabel.SetXAlign(0)
+	deviceNameLabel.AddCSSClass("heading")
+	textBox.Append(deviceNameLabel)
+
+	roomLabel := gtk.NewLabel(fmt.Sprintf("Score: %.0f", deviceData.Measurement.Score))
+	roomLabel.SetHAlign(gtk.AlignStart)
+	roomLabel.SetXAlign(0)
+	roomLabel.AddCSSClass("dim-label")
+	textBox.Append(roomLabel)
+
+	mainBox.Append(textBox)
+	row.SetChild(mainBox)
+
+	mainBox.SetObjectProperty("cursor", "pointer")
+
+	gesture := gtk.NewGestureClick()
+	gesture.ConnectPressed(func(nPress int, x, y float64) {
+		app.devicePage.showDevicePage(app, index)
+	})
+	row.AddController(gesture)
+
+	return row
 }

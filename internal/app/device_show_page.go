@@ -14,6 +14,34 @@ import (
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/models"
 )
 
+// MetricType represents different measurement types for graphing
+type MetricType int
+
+const (
+	MetricTemperature MetricType = iota
+	MetricHumidity
+	MetricCO2
+	MetricVOC
+	MetricPM25
+	MetricScore
+)
+
+// GraphState holds the current state of the graph
+type GraphState struct {
+	selectedMetric MetricType
+	timeOffset     time.Duration // Offset from current time (0 = now, -8h = 8 hours ago)
+	timeWindow     time.Duration // Duration of time window (1h, 4h, 8h, 16h, 24h)
+	drawingArea    *gtk.DrawingArea
+	timeLabel      *gtk.Label                    // Reference to time navigation label
+	windowLabel    *gtk.Label                    // Reference to time window label
+	metricButtons  map[MetricType]*gtk.Button    // References to metric buttons for styling
+	windowButtons  map[time.Duration]*gtk.Button // References to time window buttons for styling
+	device         *DeviceWithMeasurement
+	hoverX         float64 // X coordinate of mouse hover (-1 if not hovering)
+	hoverY         float64 // Y coordinate of mouse hover
+	hoveredPoint   int     // Index of hovered measurement point (-1 if none)
+}
+
 // DevicePageState holds all state related to the device detail page
 type DevicePageState struct {
 	currentDeviceSerial   string              // Serial number of currently shown device, empty if none
@@ -23,21 +51,13 @@ type DevicePageState struct {
 	currentDeviceScrolled *gtk.ScrolledWindow // Reused scrolled window to maintain scroll position
 }
 
-func (app *App) showDevicePage(deviceIndex int) {
-	app.devicePage.showDevicePage(app, deviceIndex)
-}
-
-// refreshCurrentDevicePage refreshes the currently shown device page if one is displayed
-func (app *App) refreshCurrentDevicePage() {
-	app.devicePage.refreshCurrentDevicePage(app)
-}
 
 // showDevicePage displays the device detail page
 func (dp *DevicePageState) showDevicePage(app *App, deviceIndex int) {
 	// Fetch devices from database
 	devices, err := app.getDevicesWithMeasurements()
 	if err != nil || deviceIndex >= len(devices) {
-		app.showIndexPage()
+		app.indexPage.showIndexPage(app)
 		return
 	}
 
@@ -195,7 +215,7 @@ func (dp *DevicePageState) refreshCurrentDevicePage(app *App) {
 	// Fetch devices from database
 	devices, err := app.getDevicesWithMeasurements()
 	if err != nil {
-		app.showIndexPage()
+		app.indexPage.showIndexPage(app)
 		return
 	}
 
@@ -209,7 +229,7 @@ func (dp *DevicePageState) refreshCurrentDevicePage(app *App) {
 	}
 
 	// Device not found (might have been removed), go back to index
-	app.showIndexPage()
+	app.indexPage.showIndexPage(app)
 }
 
 // clearState clears the device page state when leaving the page

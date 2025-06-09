@@ -17,14 +17,6 @@ type SettingsPageState struct {
 	retentionSpinButton *gtk.SpinButton
 }
 
-// App wrapper methods for backward compatibility
-func (app *App) setupSettingsPage() {
-	app.settingsPage.setupSettingsPage(app)
-}
-
-func (app *App) showSettingsPage() {
-	app.settingsPage.showSettingsPage(app)
-}
 
 // SettingsPageState methods
 func (sp *SettingsPageState) setupSettingsPage(app *App) {
@@ -92,7 +84,7 @@ func (sp *SettingsPageState) setupSettingsPage(app *App) {
 
 	// Connect to value changes
 	sp.retentionSpinButton.ConnectValueChanged(func() {
-		app.onRetentionPeriodChanged(int(sp.retentionSpinButton.Value()))
+		sp.onRetentionPeriodChanged(app, int(sp.retentionSpinButton.Value()))
 	})
 
 	// Add suffix label for "days"
@@ -273,6 +265,24 @@ func (sp *SettingsPageState) onVisibilityToggleChanged(app *App, visible bool) {
 	if app.dbusService != nil {
 		app.dbusService.EmitVisibilityChanged()
 	}
+}
+
+// onRetentionPeriodChanged handles changes to the data retention period setting
+func (sp *SettingsPageState) onRetentionPeriodChanged(app *App, days int) {
+	app.logger.Info("Data retention period changed", "new_days", days, "old_days", settings.DataRetentionPeriod)
+
+	// Update settings
+	settings.DataRetentionPeriod = days
+
+	// Save settings
+	err := settings.Save()
+	if err != nil {
+		app.logger.Error("Failed to save retention period setting", "error", err)
+		return
+	}
+
+	// Trigger immediate cleanup with new retention period
+	app.cleanupOldMeasurements()
 }
 
 // formatFileSize formats bytes into a human-readable string

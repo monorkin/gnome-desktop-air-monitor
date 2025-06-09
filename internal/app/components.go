@@ -8,48 +8,6 @@ import (
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 )
 
-func (app *App) createDeviceRow(deviceData DeviceWithMeasurement, index int) *gtk.ListBoxRow {
-	row := gtk.NewListBoxRow()
-	row.SetActivatable(true)
-
-	mainBox := gtk.NewBox(gtk.OrientationHorizontal, 16)
-	mainBox.SetMarginTop(12)
-	mainBox.SetMarginBottom(12)
-	mainBox.SetMarginStart(16)
-	mainBox.SetMarginEnd(16)
-
-	scoreCircle := app.createScoreCircle(deviceData.Measurement.Score)
-	scoreCircle.SetVAlign(gtk.AlignCenter)
-	mainBox.Append(scoreCircle)
-
-	textBox := gtk.NewBox(gtk.OrientationVertical, 4)
-	textBox.SetVAlign(gtk.AlignCenter)
-
-	deviceNameLabel := gtk.NewLabel(deviceData.Device.Name)
-	deviceNameLabel.SetHAlign(gtk.AlignStart)
-	deviceNameLabel.SetXAlign(0)
-	deviceNameLabel.AddCSSClass("heading")
-	textBox.Append(deviceNameLabel)
-
-	roomLabel := gtk.NewLabel(fmt.Sprintf("Score: %.0f", deviceData.Measurement.Score))
-	roomLabel.SetHAlign(gtk.AlignStart)
-	roomLabel.SetXAlign(0)
-	roomLabel.AddCSSClass("dim-label")
-	textBox.Append(roomLabel)
-
-	mainBox.Append(textBox)
-	row.SetChild(mainBox)
-
-	mainBox.SetObjectProperty("cursor", "pointer")
-
-	gesture := gtk.NewGestureClick()
-	gesture.ConnectPressed(func(nPress int, x, y float64) {
-		app.devicePage.showDevicePage(app, index)
-	})
-	row.AddController(gesture)
-
-	return row
-}
 
 func (app *App) createScoreCircle(score float64) *gtk.DrawingArea {
 	area := gtk.NewDrawingArea()

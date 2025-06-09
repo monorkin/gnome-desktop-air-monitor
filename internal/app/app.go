@@ -43,33 +43,6 @@ type DeviceWithMeasurement struct {
 	Measurement models.Measurement
 }
 
-// GraphState holds the current state of the graph
-type GraphState struct {
-	selectedMetric MetricType
-	timeOffset     time.Duration // Offset from current time (0 = now, -8h = 8 hours ago)
-	timeWindow     time.Duration // Duration of time window (1h, 4h, 8h, 16h, 24h)
-	drawingArea    *gtk.DrawingArea
-	timeLabel      *gtk.Label                    // Reference to time navigation label
-	windowLabel    *gtk.Label                    // Reference to time window label
-	metricButtons  map[MetricType]*gtk.Button    // References to metric buttons for styling
-	windowButtons  map[time.Duration]*gtk.Button // References to time window buttons for styling
-	device         *DeviceWithMeasurement
-	hoverX         float64 // X coordinate of mouse hover (-1 if not hovering)
-	hoverY         float64 // Y coordinate of mouse hover
-	hoveredPoint   int     // Index of hovered measurement point (-1 if none)
-}
-
-// MetricType represents different measurement types for graphing
-type MetricType int
-
-const (
-	MetricTemperature MetricType = iota
-	MetricHumidity
-	MetricCO2
-	MetricVOC
-	MetricPM25
-	MetricScore
-)
 
 func NewApp() *App {
 	newSettings, settingsLoaded := config.LoadOrInitializeSettingsFromDefaultLocation()
@@ -140,13 +113,13 @@ func (app *App) onActivate() {
 	app.backButton = gtk.NewButtonFromIconName("go-previous-symbolic")
 	app.backButton.SetVisible(false)
 	app.backButton.ConnectClicked(func() {
-		app.showIndexPage()
+		app.indexPage.showIndexPage(app)
 	})
 	app.headerBar.PackStart(app.backButton)
 
 	app.settingsButton = gtk.NewButtonFromIconName("preferences-system-symbolic")
 	app.settingsButton.ConnectClicked(func() {
-		app.showSettingsPage()
+		app.settingsPage.showSettingsPage(app)
 	})
 	app.headerBar.PackEnd(app.settingsButton)
 
@@ -156,8 +129,8 @@ func (app *App) onActivate() {
 	app.stack.SetTransitionType(gtk.StackTransitionTypeSlideLeftRight)
 	mainBox.Append(app.stack)
 
-	app.setupIndexPage()
-	app.setupSettingsPage()
+	app.indexPage.setupIndexPage(app)
+	app.settingsPage.setupSettingsPage(app)
 	app.mainWindow.SetContent(mainBox)
 	app.mainWindow.Present()
 
@@ -286,7 +259,7 @@ func (app *App) refreshDevicesFromDatabase() {
 	app.logger.Debug("Refreshing UI components", "current_device", app.devicePage.currentDeviceSerial)
 
 	// Refresh the index page if it exists
-	app.refreshIndexPage()
+	app.indexPage.refreshIndexPage(app)
 
 	// Refresh the current device page if one is shown
 	app.devicePage.refreshCurrentDevicePage(app)
@@ -530,20 +503,3 @@ func (app *App) cleanupOldMeasurements() {
 }
 
 
-// onRetentionPeriodChanged handles changes to the data retention period setting
-func (app *App) onRetentionPeriodChanged(days int) {
-	app.logger.Info("Data retention period changed", "new_days", days, "old_days", settings.DataRetentionPeriod)
-
-	// Update settings
-	settings.DataRetentionPeriod = days
-
-	// Save settings
-	err := settings.Save()
-	if err != nil {
-		app.logger.Error("Failed to save retention period setting", "error", err)
-		return
-	}
-
-	// Trigger immediate cleanup with new retention period
-	app.cleanupOldMeasurements()
-}

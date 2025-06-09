@@ -138,7 +138,7 @@ func (s *DBusService) OpenApp() *dbus.Error {
 	// Show the main window if it's hidden
 	if s.app.mainWindow != nil {
 		s.app.mainWindow.Present()
-		s.app.showIndexPage()
+		s.app.indexPage.showIndexPage(s.app)
 	}
 	return nil
 }
@@ -148,7 +148,7 @@ func (s *DBusService) OpenSettings() *dbus.Error {
 	// Show the main window and navigate to settings
 	if s.app.mainWindow != nil {
 		s.app.mainWindow.Present()
-		s.app.showSettingsPage()
+		s.app.settingsPage.showSettingsPage(s.app)
 	}
 	return nil
 }
