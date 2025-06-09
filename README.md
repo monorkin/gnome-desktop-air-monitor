@@ -1,1 +1,57 @@
 # GNOME Desktop Air Monitor
+GNOME Desktop Air Monitor is a desktop application for viewing Air Quality Monitor measurements.
+It comes with a shell extension that allows you to view the measurements in the top bar.
+And there is also a CLI.
+
+## Installation
+
+> [!IMPORTANT]
+> After installation, you'll have to logout and log back into your account to load the shell extension.
+> (This is required to load GNOME Shell Extensions)
+> The app itself will work without logging out.
+
+### From source
+
+Make sure that all dependencies listed in the [development](#development) section are installed.
+Then run the following commands:
+
+```bash
+make install
+```
+
+To uninstall the application, you can run:
+
+```bash
+make uninstall
+```
+
+## Development
+
+To run the app locally, you need to have the following dependencies installed:
+* Go version 1.23 or later
+* GDK version 4.0 or later
+
+To build and run the app with debug symbols, use the following command:
+
+```bash
+make dev
+
+# To pass arguments to the CLI use the ARGS variable.
+# make dev ARGS="device ls"
+```
+
+To test the shell extension, you can use the following command:
+
+```bash
+make shell-extension-dev
+```
+
+To see all available tools, run:
+
+```bash
+make help
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
