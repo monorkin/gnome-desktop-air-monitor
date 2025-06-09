@@ -36,6 +36,7 @@ type App struct {
 	isEditingDeviceName bool   // Flag to prevent UI refresh while editing device name
 	currentGraphState   *GraphState // State of the current device graph
 	currentScrollPosition float64 // Scroll position of current device page
+	currentDeviceScrolled *gtk.ScrolledWindow // Reused scrolled window to maintain scroll position
 }
 
 type DeviceWithMeasurement struct {

@@ -105,4 +105,5 @@ func (app *App) showIndexPage() {
 	app.currentDeviceSerial = ""
 	app.currentGraphState = nil // Clear graph state when leaving device page
 	app.currentScrollPosition = 0 // Reset scroll position
+	app.currentDeviceScrolled = nil // Clear reused scrolled window
 }

@@ -26,19 +26,36 @@ func (app *App) showDevicePage(deviceIndex int) {
 	// Track the currently shown device
 	app.currentDeviceSerial = deviceData.Device.SerialNumber
 
-	scrolled := gtk.NewScrolledWindow()
-	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
-	scrolled.SetVExpand(true)
+	var scrolled *gtk.ScrolledWindow
+	var vAdjustment *gtk.Adjustment
 	
-	// Get vertical adjustment for scroll position management
-	vAdjustment := scrolled.VAdjustment()
+	var savedScrollPosition float64
 	
-	// Save scroll position when it changes
-	vAdjustment.ConnectValueChanged(func() {
-		if app.currentDeviceSerial == deviceData.Device.SerialNumber {
-			app.currentScrollPosition = vAdjustment.Value()
-		}
-	})
+	// Reuse existing scrolled window if we're refreshing the same device
+	if app.currentDeviceScrolled != nil && app.currentDeviceSerial == deviceData.Device.SerialNumber {
+		scrolled = app.currentDeviceScrolled
+		vAdjustment = scrolled.VAdjustment()
+		// Save current scroll position before content update
+		savedScrollPosition = vAdjustment.Value()
+	} else {
+		// Create new scrolled window for different device
+		scrolled = gtk.NewScrolledWindow()
+		scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
+		scrolled.SetVExpand(true)
+		
+		// Get vertical adjustment for scroll position management
+		vAdjustment = scrolled.VAdjustment()
+		
+		// Save scroll position when it changes
+		vAdjustment.ConnectValueChanged(func() {
+			if app.currentDeviceSerial == deviceData.Device.SerialNumber {
+				app.currentScrollPosition = vAdjustment.Value()
+			}
+		})
+		
+		app.currentDeviceScrolled = scrolled
+		savedScrollPosition = app.currentScrollPosition
+	}
 
 	contentBox := gtk.NewBox(gtk.OrientationVertical, 24)
 	contentBox.SetMarginTop(24)
@@ -136,10 +153,10 @@ func (app *App) showDevicePage(deviceIndex int) {
 	app.stack.AddNamed(scrolled, pageName)
 	app.stack.SetVisibleChildName(pageName)
 
-	// Restore scroll position after a brief delay to ensure UI is rendered
-	if app.currentScrollPosition > 0 {
+	// Restore scroll position after content update
+	if savedScrollPosition > 0 {
 		glib.IdleAdd(func() bool {
-			vAdjustment.SetValue(app.currentScrollPosition)
+			vAdjustment.SetValue(savedScrollPosition)
 			return false
 		})
 	}
@@ -448,7 +465,7 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 
 	navRow.Append(navControlsBox)
 
-	// Graph drawing area
+	// Graph drawing area with fixed height to prevent reflow flicker
 	graphState.drawingArea = gtk.NewDrawingArea()
 	graphState.drawingArea.SetSizeRequest(600, 300)
 	graphState.drawingArea.SetHExpand(true)
@@ -458,11 +475,17 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 		app.drawGraph(cr, graphState, width, height)
 	})
 
+	// Wrap drawing area in a fixed-size container to prevent layout changes
+	graphContainer := gtk.NewBox(gtk.OrientationVertical, 0)
+	graphContainer.SetSizeRequest(-1, 300) // Fixed height
+	graphContainer.SetVExpand(false)
+	graphContainer.Append(graphState.drawingArea)
+
 	// Assemble the graph widget
 	graphBox := gtk.NewBox(gtk.OrientationVertical, 8)
 	graphBox.Append(buttonRow)
 	graphBox.Append(navRow)
-	graphBox.Append(graphState.drawingArea)
+	graphBox.Append(graphContainer)
 
 	graphGroup.Add(graphBox)
 	container.Append(graphGroup)
