@@ -264,6 +264,16 @@ func (app *App) refreshDevicesFromDatabaseSafe() {
 
 // storeMeasurement stores a measurement in the database
 func (app *App) storeMeasurement(deviceID uint, apiMeasurement api.Measurement) error {
+	device := database.DB.First(&models.Device{}, deviceID)
+	if device.Error != nil {
+		return device.Error
+	}
+
+	err := database.DB.Model(&models.Device{}).Where("id = ?", deviceID).Update("last_seen", time.Now()).Error
+	if err != nil {
+		return err
+	}
+
 	measurement := models.Measurement{
 		DeviceID:    deviceID,
 		Timestamp:   apiMeasurement.Timestamp,
@@ -280,7 +290,7 @@ func (app *App) storeMeasurement(deviceID uint, apiMeasurement api.Measurement) 
 		measurement.Timestamp = time.Now()
 	}
 
-	err := database.DB.Create(&measurement).Error
+	err = database.DB.Create(&measurement).Error
 	if err == nil {
 		app.logger.Debug("Measurement stored", "device_id", deviceID, "score", measurement.Score)
 		// Refresh UI after storing measurement (safely from any thread)

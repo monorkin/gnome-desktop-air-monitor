@@ -51,7 +51,6 @@ type DevicePageState struct {
 	currentDeviceScrolled *gtk.ScrolledWindow // Reused scrolled window to maintain scroll position
 }
 
-
 // showDevicePage displays the device detail page
 func (dp *DevicePageState) show(app *App, deviceIndex int) {
 	// Fetch devices from database
@@ -165,7 +164,6 @@ func (dp *DevicePageState) show(app *App, deviceIndex int) {
 		{"Serial Number", deviceData.Device.SerialNumber},
 		{"IP Address", deviceData.Device.IPAddress},
 		{"Last Seen", deviceData.Device.LastSeen.Format("Jan 2, 15:04")},
-		{"Last Measurement", deviceData.Measurement.Timestamp.Format("Jan 2, 15:04")},
 	}
 
 	for _, item := range deviceInfoItems {
@@ -1059,3 +1057,4 @@ func (dp *DevicePageState) drawTooltip(app *App, cr *cairo.Context, measurement 
 	cr.MoveTo(tooltipX+padding, tooltipY+padding+textExtents.Height)
 	cr.ShowText(tooltipText)
 }
+
