@@ -313,7 +313,7 @@ func getMetricInfo() map[MetricType]MetricInfo {
 // addMeasurementGraph creates and adds the measurement graph widget
 func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMeasurement) {
 	graphGroup := adw.NewPreferencesGroup()
-	graphGroup.SetTitle("24-Hour Trends")
+	graphGroup.SetTitle("Measurement Trends")
 
 	// Reuse existing graph state if available, otherwise create new
 	var graphState *GraphState
@@ -323,13 +323,16 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 		graphState.device = deviceData
 		// Clear button references since we're recreating the UI
 		graphState.metricButtons = make(map[MetricType]*gtk.Button)
+		graphState.windowButtons = make(map[time.Duration]*gtk.Button)
 	} else {
 		// Create new graph state
 		graphState = &GraphState{
-			selectedMetric: MetricScore, // Default to air quality score
-			timeOffset:     0,           // Start with current time
+			selectedMetric: MetricScore,     // Default to air quality score
+			timeOffset:     0,               // Start with current time
+			timeWindow:     24 * time.Hour,  // Default to 24 hours
 			device:         deviceData,
 			metricButtons:  make(map[MetricType]*gtk.Button),
+			windowButtons:  make(map[time.Duration]*gtk.Button),
 		}
 		app.currentGraphState = graphState
 	}
@@ -371,26 +374,79 @@ func (app *App) addMeasurementGraph(container *gtk.Box, deviceData *DeviceWithMe
 	navRow.SetHAlign(gtk.AlignCenter)
 	navRow.SetMarginBottom(12)
 
-	// Left arrow (go back 8 hours)
+	// Time window picker
+	windowPickerBox := gtk.NewBox(gtk.OrientationHorizontal, 8)
+	windowLabel := gtk.NewLabel("Window:")
+	windowLabel.AddCSSClass("caption")
+	windowPickerBox.Append(windowLabel)
+
+	// Create time window buttons
+	timeWindows := []struct {
+		duration time.Duration
+		label    string
+	}{
+		{1 * time.Hour, "1h"},
+		{4 * time.Hour, "4h"},
+		{8 * time.Hour, "8h"},
+		{16 * time.Hour, "16h"},
+		{24 * time.Hour, "24h"},
+	}
+
+	for _, tw := range timeWindows {
+		button := gtk.NewButton()
+		button.SetLabel(tw.label)
+		button.AddCSSClass("pill")
+		
+		if tw.duration == graphState.timeWindow {
+			button.AddCSSClass("suggested-action")
+		}
+
+		// Store button reference
+		graphState.windowButtons[tw.duration] = button
+		
+		// Capture duration for closure
+		duration := tw.duration
+		button.ConnectClicked(func() {
+			app.selectTimeWindow(graphState, duration)
+		})
+
+		windowPickerBox.Append(button)
+	}
+
+	navRow.Append(windowPickerBox)
+
+	// Spacer
+	spacer := gtk.NewLabel("") 
+	spacer.SetHExpand(true)
+	navRow.Append(spacer)
+
+	// Navigation controls
+	navControlsBox := gtk.NewBox(gtk.OrientationHorizontal, 8)
+
+	// Left arrow
 	leftButton := gtk.NewButtonFromIconName("go-previous-symbolic")
-	leftButton.SetTooltipText("Go back 8 hours")
+	leftButton.SetTooltipText("Go back in time")
 	leftButton.ConnectClicked(func() {
-		app.navigateTime(graphState, -8*time.Hour)
+		stepSize := graphState.timeWindow / 3 // Move by 1/3 of window
+		app.navigateTime(graphState, -stepSize)
 	})
-	navRow.Append(leftButton)
+	navControlsBox.Append(leftButton)
 
 	// Time label
-	graphState.timeLabel = gtk.NewLabel(app.getTimeWindowLabel(graphState.timeOffset))
+	graphState.timeLabel = gtk.NewLabel(app.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
 	graphState.timeLabel.AddCSSClass("caption")
-	navRow.Append(graphState.timeLabel)
+	navControlsBox.Append(graphState.timeLabel)
 
-	// Right arrow (go forward 8 hours, but not beyond current time)
+	// Right arrow
 	rightButton := gtk.NewButtonFromIconName("go-next-symbolic")
-	rightButton.SetTooltipText("Go forward 8 hours")
+	rightButton.SetTooltipText("Go forward in time")
 	rightButton.ConnectClicked(func() {
-		app.navigateTime(graphState, 8*time.Hour)
+		stepSize := graphState.timeWindow / 3 // Move by 1/3 of window
+		app.navigateTime(graphState, stepSize)
 	})
-	navRow.Append(rightButton)
+	navControlsBox.Append(rightButton)
+
+	navRow.Append(navControlsBox)
 
 	// Graph drawing area
 	graphState.drawingArea = gtk.NewDrawingArea()
@@ -434,6 +490,33 @@ func (app *App) selectMetric(graphState *GraphState, metricType MetricType) {
 	graphState.drawingArea.QueueDraw()
 }
 
+// selectTimeWindow changes the time window duration
+func (app *App) selectTimeWindow(graphState *GraphState, duration time.Duration) {
+	// Update button styles - remove suggested-action from all buttons
+	for _, button := range graphState.windowButtons {
+		button.RemoveCSSClass("suggested-action")
+	}
+	
+	// Add suggested-action to the selected button
+	if selectedButton, exists := graphState.windowButtons[duration]; exists {
+		selectedButton.AddCSSClass("suggested-action")
+	}
+	
+	// Update time window
+	graphState.timeWindow = duration
+	
+	// Reset time offset to current time when changing window
+	graphState.timeOffset = 0
+	
+	// Update time label
+	if graphState.timeLabel != nil {
+		graphState.timeLabel.SetText(app.getTimeWindowLabel(graphState.timeOffset, graphState.timeWindow))
+	}
+	
+	// Redraw graph
+	graphState.drawingArea.QueueDraw()
+}
+
 // navigateTime moves the time window and updates the graph
 func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 	newOffset := graphState.timeOffset + deltaTime
@@ -453,7 +536,7 @@ func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 
 	// Update time label
 	if graphState.timeLabel != nil {
-		graphState.timeLabel.SetText(app.getTimeWindowLabel(newOffset))
+		graphState.timeLabel.SetText(app.getTimeWindowLabel(newOffset, graphState.timeWindow))
 	}
 	
 	// Redraw the graph
@@ -461,27 +544,30 @@ func (app *App) navigateTime(graphState *GraphState, deltaTime time.Duration) {
 }
 
 // getTimeWindowLabel returns a human-readable label for the current time window
-func (app *App) getTimeWindowLabel(offset time.Duration) string {
+func (app *App) getTimeWindowLabel(offset time.Duration, windowDuration time.Duration) string {
+	windowHours := int(windowDuration.Hours())
+	
 	if offset == 0 {
-		return "Last 24 hours"
-	}
-
-	hoursAgo := int(-offset.Hours())
-	if hoursAgo < 24 {
-		return fmt.Sprintf("%d hours ago - now", hoursAgo)
-	}
-
-	daysAgo := hoursAgo / 24
-	remainingHours := hoursAgo % 24
-
-	if remainingHours == 0 {
-		if daysAgo == 1 {
-			return "1 day ago - now"
+		if windowHours == 1 {
+			return "Last hour"
 		}
-		return fmt.Sprintf("%d days ago - now", daysAgo)
+		return fmt.Sprintf("Last %d hours", windowHours)
 	}
-
-	return fmt.Sprintf("%dd %dh ago - now", daysAgo, remainingHours)
+	
+	endTime := time.Now().Add(offset)
+	startTime := endTime.Add(-windowDuration)
+	
+	// For short time ranges, show time only
+	if windowDuration <= 24*time.Hour {
+		return fmt.Sprintf("%s - %s", 
+			startTime.Format("15:04"), 
+			endTime.Format("15:04"))
+	}
+	
+	// For longer periods, show date
+	return fmt.Sprintf("%s - %s", 
+		startTime.Format("Jan 2 15:04"), 
+		endTime.Format("Jan 2 15:04"))
 }
 
 // drawGraph renders the measurement graph
@@ -502,7 +588,7 @@ func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, heig
 	}
 
 	// Get measurements for the current time window
-	measurements := app.getMeasurementsForTimeWindow(graphState.device.Device.ID, graphState.timeOffset)
+	measurements := app.getMeasurementsForTimeWindow(graphState.device.Device.ID, graphState.timeOffset, graphState.timeWindow)
 	if len(measurements) == 0 {
 		app.drawNoDataMessage(cr, width, height)
 		return
@@ -554,9 +640,9 @@ func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, heig
 	minVal -= padding
 	maxVal += padding
 
-	// Time range
-	endTime := time.Now().Add(graphState.timeOffset)
-	startTime := endTime.Add(-24 * time.Hour)
+	// Time range - use UTC to match database timestamps
+	endTime := time.Now().UTC().Add(graphState.timeOffset)
+	startTime := endTime.Add(-graphState.timeWindow)
 
 	// Draw grid and axes
 	app.drawGridAndAxes(cr, marginLeft, marginTop, graphWidth, graphHeight,
@@ -572,9 +658,10 @@ func (app *App) drawGraph(cr *cairo.Context, graphState *GraphState, width, heig
 }
 
 // getMeasurementsForTimeWindow fetches measurements for the specified time window
-func (app *App) getMeasurementsForTimeWindow(deviceID uint, offset time.Duration) []models.Measurement {
-	endTime := time.Now().Add(offset)
-	startTime := endTime.Add(-24 * time.Hour)
+func (app *App) getMeasurementsForTimeWindow(deviceID uint, offset time.Duration, windowDuration time.Duration) []models.Measurement {
+	// Use UTC time to match database timestamps
+	endTime := time.Now().UTC().Add(offset)
+	startTime := endTime.Add(-windowDuration)
 
 	var measurements []models.Measurement
 	err := database.DB.Where("device_id = ? AND timestamp BETWEEN ? AND ?",
@@ -586,6 +673,7 @@ func (app *App) getMeasurementsForTimeWindow(deviceID uint, offset time.Duration
 		return nil
 	}
 
+
 	return measurements
 }
 
@@ -595,6 +683,7 @@ func (app *App) drawNoDataMessage(cr *cairo.Context, width, height int) {
 	cr.MoveTo(float64(width/2-50), float64(height/2))
 	cr.ShowText("No data available")
 }
+
 
 // drawGridAndAxes draws the graph grid and axis labels
 func (app *App) drawGridAndAxes(cr *cairo.Context, marginLeft, marginTop, graphWidth, graphHeight int,
@@ -637,11 +726,12 @@ func (app *App) drawGridAndAxes(cr *cairo.Context, marginLeft, marginTop, graphW
 	}
 
 	// Draw X-axis labels (time)
+	windowDuration := endTime.Sub(startTime)
 	for i := 0; i <= numXLines; i++ {
 		x := marginLeft + int(float64(i)/float64(numXLines)*float64(graphWidth))
-		// Calculate time point: startTime + (i/numXLines) * 24 hours
-		hoursFromStart := float64(i) / float64(numXLines) * 24.0
-		timePoint := startTime.Add(time.Duration(hoursFromStart * float64(time.Hour)))
+		// Calculate time point: startTime + (i/numXLines) * window duration
+		fractionFromStart := float64(i) / float64(numXLines)
+		timePoint := startTime.Add(time.Duration(fractionFromStart * float64(windowDuration)))
 		label := timePoint.Format("15:04")
 
 		cr.MoveTo(float64(x-15), float64(marginTop+graphHeight+20))

@@ -47,9 +47,12 @@ type DeviceWithMeasurement struct {
 type GraphState struct {
 	selectedMetric MetricType
 	timeOffset     time.Duration // Offset from current time (0 = now, -8h = 8 hours ago)
+	timeWindow     time.Duration // Duration of time window (1h, 4h, 8h, 16h, 24h)
 	drawingArea    *gtk.DrawingArea
 	timeLabel      *gtk.Label // Reference to time navigation label
+	windowLabel    *gtk.Label // Reference to time window label
 	metricButtons  map[MetricType]*gtk.Button // References to metric buttons for styling
+	windowButtons  map[time.Duration]*gtk.Button // References to time window buttons for styling
 	device         *DeviceWithMeasurement
 }
 
