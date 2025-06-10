@@ -3,11 +3,17 @@ GNOME Desktop Air Monitor is a desktop application for viewing Air Quality Monit
 It comes with a shell extension that allows you to view the measurements in the top bar.
 And there is also a CLI.
 
+
+
+https://github.com/user-attachments/assets/2e4a6b33-70c1-4e8f-9fd8-4a08c1bae1b2
+
+
+
 Currently, the following devices are supported:
 - [x] [Awair Element](https://uk.getawair.com/products/element)
 - [ ] [Awair Omni](https://uk.getawair.com/products/omni)
 
-> [!NOTICE]
+> [!NOTE]
 > Checked devices have been tested and confirmed to work with the app
 
 ## Installation
