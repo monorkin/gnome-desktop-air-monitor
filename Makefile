@@ -27,8 +27,7 @@ BUILD_FLAGS=-trimpath
 # Targets
 .PHONY: help build build-debug run clean test test-verbose test-race test-coverage \
         fmt vet lint deps tidy check install uninstall dev all debug-info \
-        install-extension uninstall-extension reload-extension restart-gnome-shell \
-				bundle-licenses
+        install-extension uninstall-extension reload-extension restart-gnome-shell
 
 ## install: Installs the app
 install: build
@@ -59,16 +58,26 @@ shell-extension-dev:
 	dbus-run-session -- gnome-shell --nested --wayland
 
 ## build: Build the application for production
-build: deps bundle-licenses
+build: deps internal/licenses/THIRD_PARTY_LICENSES internal/licenses/LICENSE
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 
 ## build-debug: Build the application with debug symbols
-build-debug: deps
+build-debug: deps internal/licenses/THIRD_PARTY_LICENSES internal/licenses/LICENSE
 	@echo "Building $(BINARY_NAME) with debug symbols..."
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 go build -gcflags="all=-N -l" -o $(BUILD_DIR)/$(BINARY_NAME)-debug $(MAIN_PATH)
+
+internal/licenses/THIRD_PARTY_LICENSES: THIRD_PARTY_LICENSES
+	cp THIRD_PARTY_LICENSES internal/licenses/THIRD_PARTY_LICENSES
+
+internal/licenses/LICENSE:
+	cp LICENSE internal/licenses/LICENSE
+
+THIRD_PARTY_LICENSES:
+	go install github.com/google/go-licenses@latest
+	go run ./util/bundle_licenses.go
 
 ## dev: Build and run the application (pass args with ARGS="...")
 dev: build-debug
