@@ -27,18 +27,19 @@ BUILD_FLAGS=-trimpath
 # Targets
 .PHONY: help build build-debug run clean test test-verbose test-race test-coverage \
         fmt vet lint deps tidy check install uninstall dev all debug-info \
-        install-extension uninstall-extension reload-extension restart-gnome-shell
+        install-extension uninstall-extension reload-extension restart-gnome-shell \
+				bundle-licenses
 
 ## install: Installs the app
 install: build
 	@echo "Installing $(BINARY_NAME)..."
-	cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
+	sudo cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
 	@$(MAKE) install-extension
 
 ## uninstall: Uninstall the app
 uninstall: uninstall-extension
 	@echo "Uninstalling $(BINARY_NAME)..."
-	rm -f /usr/local/bin/$(BINARY_NAME)
+	sudo rm -f /usr/local/bin/$(BINARY_NAME)
 
 ## install-extension: Install GNOME shell extension
 install-extension:
@@ -58,7 +59,7 @@ shell-extension-dev:
 	dbus-run-session -- gnome-shell --nested --wayland
 
 ## build: Build the application for production
-build: deps
+build: deps bundle-licenses
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
@@ -106,6 +107,13 @@ deps:
 
 ## check: Run all checks (format, vet, lint, test)
 check: fmt vet test
+
+## bundle-licenses: Bundle licenses of dependencies
+bundle-licenses: deps
+	go install github.com/google/go-licenses@latest
+	go run ./util/bundle_licenses.go
+	cp LICENSE internal/licenses/LICENSE
+	cp THIRD_PARTY_LICENSES internal/licenses/THIRD_PARTY_LICENSES
 
 ## debug-info: Show build information
 debug-info:

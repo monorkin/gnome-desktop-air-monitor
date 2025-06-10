@@ -47,3 +47,6 @@ __debug_bin
 .glade~
 
 # Any other project-specific files
+THIRD_PARTY_LICENSES
+internal/licenses/LICENSE
+internal/licenses/THIRD_PARTY_LICENSES

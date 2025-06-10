@@ -8,6 +8,7 @@ import (
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/licenses"
 )
 
 // SettingsPageState holds all state related to the settings page
@@ -130,6 +131,43 @@ func (sp *SettingsPageState) setup(app *App) {
 	dataGroup.Add(sizeRow)
 
 	contentBox.Append(dataGroup)
+
+	// About/License settings group
+	aboutGroup := adw.NewPreferencesGroup()
+	aboutGroup.SetTitle("About")
+	aboutGroup.SetDescription("License information and legal notices")
+
+	// Project license row
+	projectLicenseRow := adw.NewActionRow()
+	projectLicenseRow.SetTitle("Project License")
+	projectLicenseRow.SetSubtitle("View the license for this application")
+
+	projectLicenseButton := gtk.NewButton()
+	projectLicenseButton.SetLabel("View")
+	projectLicenseButton.SetVAlign(gtk.AlignCenter)
+	projectLicenseButton.ConnectClicked(func() {
+		sp.showLicenseModal(app, "Project License", licenses.GetProjectLicense)
+	})
+
+	projectLicenseRow.AddSuffix(projectLicenseButton)
+	aboutGroup.Add(projectLicenseRow)
+
+	// Third party licenses row
+	thirdPartyLicenseRow := adw.NewActionRow()
+	thirdPartyLicenseRow.SetTitle("Third Party Licenses")
+	thirdPartyLicenseRow.SetSubtitle("View licenses for bundled third-party libraries")
+
+	thirdPartyLicenseButton := gtk.NewButton()
+	thirdPartyLicenseButton.SetLabel("View")
+	thirdPartyLicenseButton.SetVAlign(gtk.AlignCenter)
+	thirdPartyLicenseButton.ConnectClicked(func() {
+		sp.showLicenseModal(app, "Third Party Licenses", licenses.GetThirdPartyLicenses)
+	})
+
+	thirdPartyLicenseRow.AddSuffix(thirdPartyLicenseButton)
+	aboutGroup.Add(thirdPartyLicenseRow)
+
+	contentBox.Append(aboutGroup)
 
 	scrolled.SetChild(contentBox)
 	app.stack.AddNamed(scrolled, "settings")
@@ -298,4 +336,56 @@ func (sp *SettingsPageState) formatFileSize(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// showLicenseModal displays a modal dialog with license text
+func (sp *SettingsPageState) showLicenseModal(app *App, title string, getLicense func() (string, error)) {
+	content, err := getLicense()
+	if err != nil {
+		content = err.Error()
+	}
+
+	// Create dialog
+	dialog := adw.NewMessageDialog(&app.mainWindow.Window, title, "")
+	dialog.SetHeading(title)
+	
+	// Get current window size and set dialog to 3/4 of it
+	width, height := app.mainWindow.DefaultSize()
+	dialog.SetDefaultSize(int(float64(width)*0.75), int(float64(height)*0.75))
+
+	// Create scrolled window for content
+	scrolled := gtk.NewScrolledWindow()
+	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
+	scrolled.SetVExpand(true)
+	scrolled.SetHExpand(true)
+
+	// Create text view for license content
+	textView := gtk.NewTextView()
+	textView.SetEditable(false)
+	textView.SetWrapMode(gtk.WrapWord)
+	textView.SetMonospace(true)
+	textView.SetMarginTop(12)
+	textView.SetMarginBottom(12)
+	textView.SetMarginStart(12)
+	textView.SetMarginEnd(12)
+
+	// Set text content
+	buffer := textView.Buffer()
+	buffer.SetText(content)
+
+	scrolled.SetChild(textView)
+
+	// Set the scrolled window as the extra child of the dialog
+	dialog.SetExtraChild(scrolled)
+
+	// Add close button
+	dialog.AddResponse("close", "Close")
+	dialog.SetDefaultResponse("close")
+
+	// Connect response signal
+	dialog.ConnectResponse(func(response string) {
+		dialog.Destroy()
+	})
+
+	dialog.Present()
 }
