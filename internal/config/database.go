@@ -10,7 +10,7 @@ const (
 )
 
 func DBPath() string {
-	if dbPath := os.Getenv("GNOME_AWAIR_CLIENT_DB_PATH"); dbPath != "" {
+	if dbPath := os.Getenv("GNOME_DESKTOP_AIR_MONITOR_DB_PATH"); dbPath != "" {
 		return dbPath
 	}
 

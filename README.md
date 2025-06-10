@@ -6,7 +6,9 @@ And there is also a CLI.
 Currently, the following devices are supported:
 - [x] [Awair Element](https://uk.getawair.com/products/element)
 - [ ] [Awair Omni](https://uk.getawair.com/products/omni)
-**(Checked devices have been tested and confirmed to work with the app)**
+
+> [!NOTICE]
+> Checked devices have been tested and confirmed to work with the app
 
 ## Installation
 

@@ -21,7 +21,7 @@ RELEASE_FILES=$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-linux-*" -
 							icon.svg
 
 # Go build flags
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
+LDFLAGS=-ldflags "-X github.com/monorkin/gnome-desktop-air-monitor/internal/version.Version=$(VERSION) -X github.com/monorkin/gnome-desktop-air-monitor/internal/version.BuildTime=$(BUILD_TIME) -X github.com/monorkin/gnome-desktop-air-monitor/internal/version.GitCommit=$(GIT_COMMIT)"
 BUILD_FLAGS=-trimpath
 
 # Default target
@@ -187,6 +187,7 @@ debug-info:
 	@echo "Build Dir: $(BUILD_DIR)"
 	@echo "Extension UUID: $(EXTENSION_UUID)"
 	@echo "Extension Dir: $(EXTENSION_DIR)"
+	@echo "Release Files: $(RELEASE_FILES)"
 
 ## release: Create and publish a new release with multi-architecture binaries
 release: multiarch-build
@@ -228,7 +229,7 @@ release: multiarch-build
 		--title "$(VERSION)" \
 		--notes-file CHANGELOG.md \
 		--verify-tag \
-		$(RELEASE_BINARIES)
+		$(RELEASE_FILES)
 	@echo "✅ Release $(VERSION) created successfully!"
 
 ## help: Show this help message

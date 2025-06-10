@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	APP_DIR_NAME = "gnome-awair-client"
+	APP_DIR_NAME = "gnome-desktop-air-monitor"
 )
 
 func DataDir() string {

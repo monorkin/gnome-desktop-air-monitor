@@ -6,9 +6,12 @@ import (
 	adw "github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	glib "github.com/diamondburned/gotk4/pkg/glib/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
+	pango "github.com/diamondburned/gotk4/pkg/pango"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/config"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/database"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/globals"
 	"github.com/monorkin/gnome-desktop-air-monitor/internal/licenses"
+	"github.com/monorkin/gnome-desktop-air-monitor/internal/version"
 )
 
 // SettingsPageState holds all state related to the settings page
@@ -142,9 +145,50 @@ func (sp *SettingsPageState) setup(app *App) {
 	// About/License settings group
 	aboutGroup := adw.NewPreferencesGroup()
 	aboutGroup.SetTitle("About")
-	aboutGroup.SetDescription("License information and legal notices")
+	aboutGroup.SetDescription("Application information and legal notices")
 	aboutGroup.SetMarginStart(12)
 	aboutGroup.SetMarginEnd(12)
+
+	// Version row
+	versionRow := adw.NewActionRow()
+	versionRow.SetTitle("Version")
+	versionRow.SetSubtitle("Current application version")
+	versionRow.AddCSSClass("padded-row")
+
+	versionLabel := gtk.NewLabel(version.GetVersion())
+	versionLabel.AddCSSClass("dim-label")
+	versionLabel.SetVAlign(gtk.AlignCenter)
+	versionLabel.SetSelectable(true)
+	versionRow.AddSuffix(versionLabel)
+	aboutGroup.Add(versionRow)
+
+	// Config path row
+	configPathRow := adw.NewActionRow()
+	configPathRow.SetTitle("Configuration File")
+	configPathRow.SetSubtitle("Location of the settings file")
+	configPathRow.AddCSSClass("padded-row")
+
+	configPathLabel := gtk.NewLabel(config.DefaultSettingsPath())
+	configPathLabel.AddCSSClass("dim-label")
+	configPathLabel.SetVAlign(gtk.AlignCenter)
+	configPathLabel.SetSelectable(true)
+	configPathLabel.SetEllipsize(pango.EllipsizeMiddle)
+	configPathRow.AddSuffix(configPathLabel)
+	aboutGroup.Add(configPathRow)
+
+	// Database path row
+	dbPathRow := adw.NewActionRow()
+	dbPathRow.SetTitle("Database File")
+	dbPathRow.SetSubtitle("Location of the measurement data")
+	dbPathRow.AddCSSClass("padded-row")
+
+	dbPathLabel := gtk.NewLabel(config.DBPath())
+	dbPathLabel.AddCSSClass("dim-label")
+	dbPathLabel.SetVAlign(gtk.AlignCenter)
+	dbPathLabel.SetSelectable(true)
+	dbPathLabel.SetEllipsize(pango.EllipsizeMiddle)
+	dbPathRow.AddSuffix(dbPathLabel)
+	aboutGroup.Add(dbPathRow)
 
 	// Project license row
 	projectLicenseRow := adw.NewActionRow()
@@ -400,4 +444,3 @@ func (sp *SettingsPageState) showLicenseModal(app *App, title string, getLicense
 
 	dialog.Present()
 }
-
