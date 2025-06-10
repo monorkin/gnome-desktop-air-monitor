@@ -27,6 +27,12 @@ curl -sSL https://raw.githubusercontent.com/monorkin/gnome-desktop-air-monitor/m
 
 This will download and install the latest version of the application for your system, including the shell extension.
 
+To uninstall the application, you can run:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/monorkin/gnome-desktop-air-monitor/main/uninstall.sh | bash
+```
+
 ### From source
 
 Make sure that all dependencies listed in the [development](#development) section are installed.

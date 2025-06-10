@@ -16,7 +16,9 @@ EXTENSION_DIR=~/.local/share/gnome-shell/extensions/$(EXTENSION_UUID)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 RELEASE_FILES=$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-linux-*" -print) \
 							$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-*.png" -print) \
-							icon.svg
+							icon.svg \
+							$(BINARY_NAME).desktop \
+							$(BUILD_DIR)/$(BINARY_NAME)-shell-extension.tar.gz
 
 # Go build flags
 LDFLAGS=-ldflags "-X github.com/monorkin/gnome-desktop-air-monitor/internal/version.Version=$(VERSION)"
@@ -28,8 +30,8 @@ BUILD_FLAGS=-trimpath
 # Targets
 .PHONY: help build build-debug run clean test test-verbose test-race test-coverage \
         fmt vet lint deps tidy check install uninstall dev all debug-info \
-        install-extension uninstall-extension reload-extension restart-gnome-shell \
-        convert-icon multiarch-build release pre-release-check
+        install-extension shell-extension-dev package-extension \
+        convert-icon multiarch-build release
 
 ## install: Installs the app
 install: build convert-icon
@@ -53,19 +55,9 @@ install: build convert-icon
 	@$(MAKE) install-extension
 
 ## uninstall: Uninstall the app
-uninstall: uninstall-extension
-	@echo "Uninstalling $(BINARY_NAME)..."
-	sudo rm -f /usr/local/bin/$(BINARY_NAME)
-	@echo "Removing icons..."
-	sudo rm -f /usr/share/icons/hicolor/scalable/apps/$(BINARY_NAME).svg
-	sudo rm -f /usr/share/icons/hicolor/48x48/apps/$(BINARY_NAME).png
-	sudo rm -f /usr/share/icons/hicolor/64x64/apps/$(BINARY_NAME).png
-	sudo rm -f /usr/share/icons/hicolor/128x128/apps/$(BINARY_NAME).png
-	sudo rm -f /usr/share/icons/hicolor/256x256/apps/$(BINARY_NAME).png
-	sudo gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
-	@echo "Removing desktop file..."
-	sudo rm -f /usr/share/applications/$(BINARY_NAME).desktop
-	sudo update-desktop-database
+uninstall:
+	@echo "Running uninstall script..."
+	./uninstall.sh
 
 ## install-extension: Install GNOME shell extension
 install-extension:
@@ -73,12 +65,6 @@ install-extension:
 	@mkdir -p $(EXTENSION_DIR)
 	@cp -r shell_extension/* $(EXTENSION_DIR)/
 
-## uninstall-extension: Uninstall GNOME shell extension
-uninstall-extension:
-	@echo "Uninstalling GNOME shell extension ($(EXTENSION_UUID))..."
-	gnome-extensions disable $(EXTENSION_UUID) 2>/dev/null || true
-	@rm -rf $(EXTENSION_DIR)
-	@echo "Extension uninstalled."
 
 ## shell-extension-dev: Start a GNOME shell session for extension development
 shell-extension-dev:
@@ -108,6 +94,12 @@ multiarch-build: deps internal/licenses/THIRD_PARTY_LICENSES internal/licenses/L
 	CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=7 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-armv7 $(MAIN_PATH)
 	@echo "Multi-architecture build complete:"
 	@ls -la $(BUILD_DIR)/$(BINARY_NAME)-linux-*
+
+## package-extension: Create shell extension archive
+package-extension:
+	@echo "Packaging shell extension..."
+	@mkdir -p $(BUILD_DIR)
+	tar -czf $(BUILD_DIR)/$(BINARY_NAME)-shell-extension.tar.gz -C shell_extension .
 
 internal/licenses/THIRD_PARTY_LICENSES: THIRD_PARTY_LICENSES
 	cp THIRD_PARTY_LICENSES internal/licenses/THIRD_PARTY_LICENSES
@@ -186,7 +178,7 @@ debug-info:
 	@echo "Release Files: $(RELEASE_FILES)"
 
 ## release: Create and publish a new release with multi-architecture binaries
-release: convert-icon multiarch-build
+release: convert-icon multiarch-build package-extension
 	@echo "Checking if gh is installed and configured..."
 	@if ! command -v gh >/dev/null 2>&1; then \
 		echo "❌ GitHub CLI (gh) is required for releases."; \
