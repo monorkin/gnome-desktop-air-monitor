@@ -13,7 +13,7 @@ fi)
 EXTENSION_DIR=~/.local/share/gnome-shell/extensions/$(EXTENSION_UUID)
 
 # Build information
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
 RELEASE_FILES=$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-linux-*" -print) \
 							$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-*.png" -print) \
 							icon.svg \
