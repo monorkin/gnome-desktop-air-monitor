@@ -94,7 +94,6 @@ detect_arch() {
 
 # Get latest release tag from GitHub API (without jq)
 get_latest_release_tag() {
-  log_info "Fetching latest release information..."
   local response
   response=$(curl -sSL "https://api.github.com/repos/$REPO/releases/latest")
 
@@ -219,7 +218,7 @@ install_extension() {
   if curl -sSL "$extension_url" -o "$temp_dir/extension.tar.gz"; then
     # Extract the archive
     tar -xzf "$temp_dir/extension.tar.gz" -C "$temp_dir/"
-    
+
     # Extract UUID from metadata.json (without jq)
     if [ -f "$temp_dir/metadata.json" ]; then
       extension_uuid=$(grep '"uuid":' "$temp_dir/metadata.json" | sed 's/.*"uuid":[[:space:]]*"\([^"]*\)".*/\1/')
@@ -258,6 +257,7 @@ main() {
   log_info "Detected architecture: $arch"
 
   # Get latest release tag
+  log_info "Fetching latest release information..."
   local tag_name
   tag_name=$(get_latest_release_tag)
   log_info "Latest version: $tag_name"
