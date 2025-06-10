@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GNOME Desktop Air Monitor
+GenericName=Air Quality Monitor
+Comment=Monitor air quality from Awair devices on your desktop
+Exec=gnome-desktop-air-monitor
+Icon=gnome-desktop-air-monitor
+Terminal=false
+NoDisplay=false
+Categories=Utility;Monitor;Science;
+Keywords=air;quality;awair;monitor;pollution;environment;health;
+StartupNotify=true
+StartupWMClass=gnome-desktop-air-monitor
+MimeType=
+Actions=
