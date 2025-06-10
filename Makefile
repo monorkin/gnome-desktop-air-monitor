@@ -88,10 +88,8 @@ multiarch-build: deps internal/licenses/THIRD_PARTY_LICENSES internal/licenses/L
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building for Linux AMD64..."
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
-	@echo "Building for Linux ARM64..."
-	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 $(MAIN_PATH)
-	@echo "Building for Linux ARM (32-bit)..."
-	CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=7 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-armv7 $(MAIN_PATH)
+	# @echo "Building for Linux ARM64..."
+	# CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOOS=linux GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 $(MAIN_PATH)
 	@echo "Multi-architecture build complete:"
 	@ls -la $(BUILD_DIR)/$(BINARY_NAME)-linux-*
 
