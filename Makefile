@@ -14,14 +14,12 @@ EXTENSION_DIR=~/.local/share/gnome-shell/extensions/$(EXTENSION_UUID)
 
 # Build information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_TIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
-GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 RELEASE_FILES=$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-linux-*" -print) \
 							$(shell find $(BUILD_DIR) -type f -name "$(BINARY_NAME)-*.png" -print) \
 							icon.svg
 
 # Go build flags
-LDFLAGS=-ldflags "-X github.com/monorkin/gnome-desktop-air-monitor/internal/version.Version=$(VERSION) -X github.com/monorkin/gnome-desktop-air-monitor/internal/version.BuildTime=$(BUILD_TIME) -X github.com/monorkin/gnome-desktop-air-monitor/internal/version.GitCommit=$(GIT_COMMIT)"
+LDFLAGS=-ldflags "-X github.com/monorkin/gnome-desktop-air-monitor/internal/version.Version=$(VERSION)"
 BUILD_FLAGS=-trimpath
 
 # Default target
@@ -181,8 +179,6 @@ bundle-licenses: deps
 debug-info:
 	@echo "Binary Name: $(BINARY_NAME)"
 	@echo "Version: $(VERSION)"
-	@echo "Build Time: $(BUILD_TIME)"
-	@echo "Git Commit: $(GIT_COMMIT)"
 	@echo "Go Version: $(shell go version)"
 	@echo "Build Dir: $(BUILD_DIR)"
 	@echo "Extension UUID: $(EXTENSION_UUID)"
@@ -190,7 +186,7 @@ debug-info:
 	@echo "Release Files: $(RELEASE_FILES)"
 
 ## release: Create and publish a new release with multi-architecture binaries
-release: multiarch-build
+release: convert-icon multiarch-build
 	@echo "Checking if gh is installed and configured..."
 	@if ! command -v gh >/dev/null 2>&1; then \
 		echo "❌ GitHub CLI (gh) is required for releases."; \
@@ -224,12 +220,15 @@ release: multiarch-build
 	@echo "✅ Repository is ready for release $(RELEASE_TAG)"
 	@echo "Pushing tag to GitHub..."
 	git push origin $(VERSION)
+	@echo "Extracting release notes for $(VERSION)..."
+	@awk '/^## \[$(VERSION)\]/{flag=1;next}/^## \[/{flag=0}flag' CHANGELOG.md > /tmp/release_notes_$(VERSION).md
 	@echo "Creating GitHub release..."
 	gh release create $(VERSION) \
 		--title "$(VERSION)" \
-		--notes-file CHANGELOG.md \
+		--notes-file /tmp/release_notes_$(VERSION).md \
 		--verify-tag \
 		$(RELEASE_FILES)
+	@rm -f /tmp/release_notes_$(VERSION).md
 	@echo "✅ Release $(VERSION) created successfully!"
 
 ## help: Show this help message
