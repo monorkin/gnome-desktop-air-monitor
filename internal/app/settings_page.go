@@ -19,7 +19,6 @@ type SettingsPageState struct {
 	retentionSpinButton *gtk.SpinButton
 }
 
-
 // SettingsPageState methods
 func (sp *SettingsPageState) setup(app *App) {
 	scrolled := gtk.NewScrolledWindow()
@@ -29,8 +28,8 @@ func (sp *SettingsPageState) setup(app *App) {
 	contentBox := gtk.NewBox(gtk.OrientationVertical, 24)
 	contentBox.SetMarginTop(24)
 	contentBox.SetMarginBottom(24)
-	contentBox.SetMarginStart(24)
-	contentBox.SetMarginEnd(24)
+	contentBox.SetMarginStart(36)
+	contentBox.SetMarginEnd(36)
 
 	titleLabel := gtk.NewLabel("Settings")
 	titleLabel.AddCSSClass("title-1")
@@ -40,12 +39,15 @@ func (sp *SettingsPageState) setup(app *App) {
 	// Shell Extension settings group
 	shellGroup := adw.NewPreferencesGroup()
 	shellGroup.SetTitle("Status bar")
-	// shellGroup.SetDescription("Configure the status bar indicator")
+	shellGroup.SetMarginStart(12)
+	shellGroup.SetMarginEnd(12)
+	shellGroup.SetDescription("Configure the status bar indicator")
 
 	// Shell extension visibility toggle
 	visibilityRow := adw.NewActionRow()
 	visibilityRow.SetTitle("Show Status Bar Indicator")
 	visibilityRow.SetSubtitle("Display air quality information in the top bar")
+	visibilityRow.AddCSSClass("padded-row")
 
 	sp.visibilitySwitch = gtk.NewSwitch()
 	sp.visibilitySwitch.SetVAlign(gtk.AlignCenter)
@@ -61,6 +63,7 @@ func (sp *SettingsPageState) setup(app *App) {
 	deviceRow := adw.NewActionRow()
 	deviceRow.SetTitle("Device")
 	deviceRow.SetSubtitle("Choose which device to display in the shell extension")
+	deviceRow.AddCSSClass("padded-row")
 
 	// Create dropdown for device selection
 	sp.setupDropdown(app, deviceRow)
@@ -72,11 +75,14 @@ func (sp *SettingsPageState) setup(app *App) {
 	dataGroup := adw.NewPreferencesGroup()
 	dataGroup.SetTitle("Data Management")
 	dataGroup.SetDescription("Configure data storage and retention policies")
+	dataGroup.SetMarginStart(12)
+	dataGroup.SetMarginEnd(12)
 
 	// Data retention period row
 	retentionRow := adw.NewActionRow()
 	retentionRow.SetTitle("Data Retention Period")
 	retentionRow.SetSubtitle("Number of days to keep measurement data")
+	retentionRow.AddCSSClass("padded-row")
 
 	// Create spin button for retention period
 	retentionAdjustment := gtk.NewAdjustment(float64(globals.Settings.DataRetentionPeriod), 1, 365, 1, 7, 0)
@@ -104,6 +110,7 @@ func (sp *SettingsPageState) setup(app *App) {
 	sizeRow := adw.NewActionRow()
 	sizeRow.SetTitle("Database Size")
 	sizeRow.SetSubtitle("Current storage space used by measurement data")
+	sizeRow.AddCSSClass("padded-row")
 
 	// Get and format database size
 	sizeLabel := gtk.NewLabel("Calculating...")
@@ -136,11 +143,14 @@ func (sp *SettingsPageState) setup(app *App) {
 	aboutGroup := adw.NewPreferencesGroup()
 	aboutGroup.SetTitle("About")
 	aboutGroup.SetDescription("License information and legal notices")
+	aboutGroup.SetMarginStart(12)
+	aboutGroup.SetMarginEnd(12)
 
 	// Project license row
 	projectLicenseRow := adw.NewActionRow()
 	projectLicenseRow.SetTitle("Project License")
 	projectLicenseRow.SetSubtitle("View the license for this application")
+	projectLicenseRow.AddCSSClass("padded-row")
 
 	projectLicenseButton := gtk.NewButton()
 	projectLicenseButton.SetLabel("View")
@@ -156,6 +166,7 @@ func (sp *SettingsPageState) setup(app *App) {
 	thirdPartyLicenseRow := adw.NewActionRow()
 	thirdPartyLicenseRow.SetTitle("Third Party Licenses")
 	thirdPartyLicenseRow.SetSubtitle("View licenses for bundled third-party libraries")
+	thirdPartyLicenseRow.AddCSSClass("padded-row")
 
 	thirdPartyLicenseButton := gtk.NewButton()
 	thirdPartyLicenseButton.SetLabel("View")
@@ -348,7 +359,7 @@ func (sp *SettingsPageState) showLicenseModal(app *App, title string, getLicense
 	// Create dialog
 	dialog := adw.NewMessageDialog(&app.mainWindow.Window, title, "")
 	dialog.SetHeading(title)
-	
+
 	// Get current window size and set dialog to 3/4 of it
 	width, height := app.mainWindow.DefaultSize()
 	dialog.SetDefaultSize(int(float64(width)*0.75), int(float64(height)*0.75))
@@ -389,3 +400,4 @@ func (sp *SettingsPageState) showLicenseModal(app *App, title string, getLicense
 
 	dialog.Present()
 }
+

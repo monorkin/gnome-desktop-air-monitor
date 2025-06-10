@@ -5,6 +5,7 @@ import (
 	"time"
 
 	adw "github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	gdk "github.com/diamondburned/gotk4/pkg/gdk/v4"
 	gio "github.com/diamondburned/gotk4/pkg/gio/v2"
 	glib "github.com/diamondburned/gotk4/pkg/glib/v2"
 	gtk "github.com/diamondburned/gotk4/pkg/gtk/v4"
@@ -66,6 +67,9 @@ func NewApp() *App {
 }
 
 func (app *App) onActivate() {
+	// Set up custom CSS styles
+	app.setupCSS()
+
 	// Database is already initialized in NewApp()
 
 	// Initialize DBUS service
@@ -495,4 +499,16 @@ func (app *App) cleanupOldMeasurements() {
 	} else {
 		app.logger.Debug("No old measurements to cleanup")
 	}
+}
+
+// setupCSS adds custom CSS styles for the application
+func (app *App) setupCSS() {
+	cssProvider := gtk.NewCSSProvider()
+	cssProvider.LoadFromData(".padded-row { padding: 12px 16px; }")
+	display := gdk.DisplayGetDefault()
+	gtk.StyleContextAddProviderForDisplay(
+		display,
+		cssProvider,
+		gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+	)
 }

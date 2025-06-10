@@ -139,6 +139,7 @@ func (dp *DevicePageState) show(app *App, deviceIndex int) {
 	for _, metric := range metrics {
 		row := adw.NewActionRow()
 		row.SetTitle(metric.name)
+		row.AddCSSClass("padded-row")
 
 		valueText := app.formatValue(metric.value, metric.unit)
 		valueLabel := gtk.NewLabel(valueText)
@@ -169,6 +170,7 @@ func (dp *DevicePageState) show(app *App, deviceIndex int) {
 	for _, item := range deviceInfoItems {
 		row := adw.NewActionRow()
 		row.SetTitle(item.title)
+		row.AddCSSClass("padded-row")
 
 		valueLabel := gtk.NewLabel(item.value)
 		valueLabel.AddCSSClass("dim-label")
