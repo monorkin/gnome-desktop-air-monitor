@@ -15,6 +15,16 @@ Currently, the following devices are supported:
 > (This is required to load GNOME Shell Extensions)
 > The app itself will work without logging out.
 
+### Pre-compiled binary
+
+Run the following command:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/monorkin/gnome-desktop-air-monitor/main/install.sh | bash
+```
+
+This will download and install the latest version of the application for your system, including the shell extension.
+
 ### From source
 
 Make sure that all dependencies listed in the [development](#development) section are installed.
