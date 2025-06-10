@@ -16,6 +16,7 @@ Currently, the following devices are supported:
 > After installation, you'll have to logout and log back into your account to load the shell extension.
 > (This is required to load GNOME Shell Extensions)
 > The app itself will work without logging out.
+> Remember to enable the extension after logging back in!
 
 ### Pre-compiled binary
 
