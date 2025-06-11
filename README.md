@@ -16,6 +16,14 @@ Currently, the following devices are supported:
 > [!NOTE]
 > Checked devices have been tested and confirmed to work with the app
 
+## Usage
+
+### GUI
+
+### CLI
+
+
+
 ## Installation
 
 > [!IMPORTANT]
@@ -24,7 +32,7 @@ Currently, the following devices are supported:
 > The app itself will work without logging out.
 > Remember to enable the extension after logging back in!
 
-### Pre-compiled binary
+### From a pre-compiled binary
 
 Run the following command:
 
@@ -40,7 +48,7 @@ To uninstall the application, you can run:
 curl -sSL https://raw.githubusercontent.com/monorkin/gnome-desktop-air-monitor/main/uninstall.sh | bash
 ```
 
-### From source
+### Build from source
 
 Make sure that all dependencies listed in the [development](#development) section are installed.
 Then run the following commands:
