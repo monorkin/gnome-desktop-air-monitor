@@ -5,6 +5,14 @@ All notable changes to GNOME Desktop Air Monitor will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.0.2] - UNRELEASED
+### Fixed
+- Install script fails due to incorrect version lookup
+
+### Removed
+- ARM64 (aarch64) support for now, due to issues with the build process
+- ARMv7 (32-bit ARM) support for now, due to issues with the build process
+
 ## [v0.0.1] - 2025-06-10
 
 ### Added
