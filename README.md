@@ -20,6 +20,14 @@ Currently, the following devices are supported:
 
 ### GUI
 
+![device index page](https://github.com/user-attachments/assets/05990759-3e0f-4d59-ac05-ee2943be4262)
+
+![device show page](https://github.com/user-attachments/assets/c179b37f-507b-4970-97a6-2049efe422a7)
+
+![settings page](https://github.com/user-attachments/assets/3d737ddb-ba36-42c2-b954-f0023d5197e3)
+
+![status bar](https://github.com/user-attachments/assets/23d4371c-55fa-45d0-b753-1703aef161e1)
+
 ### CLI
 
 
