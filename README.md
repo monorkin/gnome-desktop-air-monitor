@@ -9,12 +9,17 @@ https://github.com/user-attachments/assets/2e4a6b33-70c1-4e8f-9fd8-4a08c1bae1b2
 
 
 
+## Supported devices
+
 Currently, the following devices are supported:
 - [x] [Awair Element](https://uk.getawair.com/products/element)
 - [ ] [Awair Omni](https://uk.getawair.com/products/omni)
 
 > [!NOTE]
 > Checked devices have been tested and confirmed to work with the app
+
+> [!IMPORTANT]
+> PRs that add support for more devices are welcome
 
 ## Usage
 
